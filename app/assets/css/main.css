@@ -1,4 +1,4 @@
-@import '@unocss/reset/tailwind.css';
+@import "@unocss/reset/tailwind.css";
 
 :root {
   color-scheme: dark;
@@ -14,14 +14,14 @@ body {
 }
 
 ::selection {
-  background: theme('colors.primary');
-  color: theme('colors.base');
+  background: theme("colors.primary");
+  color: theme("colors.base");
 }
 
 /* Thin phosphor scrollbar to match the terminal aesthetic. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: theme('colors.line') transparent;
+  scrollbar-color: theme("colors.line") transparent;
 }
 
 /*
@@ -38,8 +38,8 @@ body {
 /* Faint technical grid, fading out toward the edges. */
 .bg-grid {
   background-image:
-    linear-gradient(theme('colors.line') 1px, transparent 1px),
-    linear-gradient(90deg, theme('colors.line') 1px, transparent 1px);
+    linear-gradient(theme("colors.line") 1px, transparent 1px),
+    linear-gradient(90deg, theme("colors.line") 1px, transparent 1px);
   background-size: 44px 44px;
   opacity: 0.06;
   mask-image: radial-gradient(ellipse at 50% 30%, black 40%, transparent 78%);
