@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@pinia/nuxt": "^0.11.3",
-    "@upstash/redis": "^1.38.0",
     "marked": "^18.0.6",
     "nuxt": "^4.4.8",
     "pinia": "^3.0.4",

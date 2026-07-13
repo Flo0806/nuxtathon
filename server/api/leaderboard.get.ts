@@ -1,26 +1,24 @@
-// Computes the ranking for the event window. `from`/`to` query overrides exist
-// so a past, GitHub-verifiable window can be tested before the event is live.
-export default defineEventHandler(async (event) => {
-  const token = useRuntimeConfig().githubToken;
-  if (!token) {
-    throw createError({ statusCode: 400, statusMessage: "NUXT_GITHUB_TOKEN is not set" });
-  }
+// Cached so N page views cost at most one GitHub fetch per maxAge window. SWR
+// serves stale instantly and revalidates in the background. The handler body
+// (GitHub fetch + snapshot write) runs only on a cache miss.
+export default defineCachedEventHandler(
+  async () => {
+    const token = useRuntimeConfig().githubToken;
+    if (!token) {
+      throw createError({ statusCode: 400, statusMessage: "NUXT_GITHUB_TOKEN is not set" });
+    }
 
-  const q = getQuery(event);
-  const result = await fetchLeaderboard(eventConfig, token, {
-    from: q.from ? String(q.from) : undefined,
-    to: q.to ? String(q.to) : undefined,
-  });
+    const result = await fetchLeaderboard(eventConfig, token);
+    const fetchedAt = new Date().toISOString();
 
-  // Snapshot write is provisional here; it moves into the cached refresh later.
-  const state = await readRuntimeState();
-  await writeRuntimeState(
-    pushSnapshot(
-      state,
-      result.entries.map((entry) => entry.login),
-      new Date().toISOString(),
-    ),
-  );
+    const state = await readRuntimeState();
+    const order = result.entries.map((entry) => entry.login);
+    const last = state.snapshots.at(-1);
+    if (!last || last.order.join("\n") !== order.join("\n")) {
+      await writeRuntimeState(pushSnapshot(state, order, fetchedAt));
+    }
 
-  return result;
-});
+    return { ...result, fetchedAt };
+  },
+  { maxAge: 300, swr: true, name: "leaderboard", getKey: () => "current" },
+);

@@ -4,19 +4,35 @@ import { marked } from "marked";
 const store = useEventStore();
 await store.load();
 
-const route = useRoute();
-// from/to query overrides the config window to preview a past, verifiable range.
-const previewWindow = route.query.from
-  ? { from: String(route.query.from), to: route.query.to ? String(route.query.to) : undefined }
-  : undefined;
-
-const showLeaderboard = computed(
-  () => store.phase === "live" || store.phase === "results" || Boolean(previewWindow),
-);
-
+const showLeaderboard = computed(() => store.phase === "live" || store.phase === "results");
 if (showLeaderboard.value) {
-  await store.loadLeaderboard(previewWindow);
+  await store.loadLeaderboard();
 }
+
+const updatedAt = computed(() => {
+  if (!store.fetchedAt || !store.config) return "";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: store.config.displayTimeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(store.fetchedAt));
+});
+
+// GitHub is pulled at most every 5 min (server cache); this poll only re-reads
+// so open pages pick up a refresh and the board reshuffles.
+const POLL_MS = 2 * 60 * 1000;
+let poll: ReturnType<typeof setInterval> | undefined;
+
+onMounted(() => {
+  if (store.phase === "live") {
+    poll = setInterval(() => store.loadLeaderboard(true), POLL_MS);
+  }
+});
+
+onBeforeUnmount(() => {
+  if (poll) clearInterval(poll);
+});
 
 // Config description is trusted, committed Markdown, so inline rendering is safe.
 const description = computed(() =>
@@ -73,6 +89,9 @@ const dateRange = computed(() => {
           class="panel mx-auto max-w-[42rem] px-6 py-10 text-center font-mono text-sm text-muted"
         >
           No issues closed yet. The ranking fills as merged PRs land.
+        </p>
+        <p v-if="updatedAt" class="font-mono text-[0.62rem] uppercase tracking-wider text-muted">
+          Last updated {{ updatedAt }} {{ store.config?.displayTimeZone }}
         </p>
       </section>
     </template>

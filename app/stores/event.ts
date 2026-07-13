@@ -20,6 +20,7 @@ export const useEventStore = defineStore("event", () => {
   const snapshots = ref<Snapshot[]>([]);
   const leaderboard = ref<LeaderboardEntry[]>([]);
   const stats = ref<EventStats | null>(null);
+  const fetchedAt = ref<string | null>(null);
   const leaderboardLoaded = ref(false);
 
   async function load() {
@@ -33,19 +34,29 @@ export const useEventStore = defineStore("event", () => {
     snapshots.value = data.snapshots;
   }
 
-  // `window` overrides the config event window (used to preview past ranges).
-  async function loadLeaderboard(window?: { from?: string; to?: string }) {
-    if (leaderboardLoaded.value && !window) return;
-    const res = await $fetch<{ entries: LeaderboardEntry[]; stats: EventStats }>(
-      "/api/leaderboard",
-      {
-        query: window,
-      },
-    );
+  // `force` bypasses the hydration guard so the client poll can refresh.
+  async function loadLeaderboard(force = false) {
+    if (leaderboardLoaded.value && !force) return;
+    const res = await $fetch<{
+      entries: LeaderboardEntry[];
+      stats: EventStats;
+      fetchedAt: string;
+    }>("/api/leaderboard");
     leaderboard.value = res.entries;
     stats.value = res.stats;
+    fetchedAt.value = res.fetchedAt;
     leaderboardLoaded.value = true;
   }
 
-  return { config, phase, prizesReleased, snapshots, leaderboard, stats, load, loadLeaderboard };
+  return {
+    config,
+    phase,
+    prizesReleased,
+    snapshots,
+    leaderboard,
+    stats,
+    fetchedAt,
+    load,
+    loadLeaderboard,
+  };
 });

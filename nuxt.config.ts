@@ -11,14 +11,12 @@ export default defineNuxtConfig({
     adminPassword: "",
   },
   nitro: {
+    // Single self-hosted instance: one process, so filesystem storage is both
+    // shared and persistent. `.data` lives next to the running server; no
+    // external KV needed.
     storage: {
-      // Production: hosted KV. Credentials are read from env at runtime
-      // (UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN).
-      state: { driver: "upstash", base: "nuxtathon" },
-    },
-    devStorage: {
-      // Local dev: plain filesystem, no external service required.
       state: { driver: "fs", base: ".data/state" },
+      cache: { driver: "fs", base: ".data/cache" },
     },
   },
 });

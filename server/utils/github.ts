@@ -97,8 +97,10 @@ function toGithubStamp(iso: string): string {
 
 const isHuman = (author: { __typename: string } | null): boolean => author?.__typename === "User";
 
-async function fetchMergedPrs(token: string, from: string, to: string): Promise<PrNode[]> {
-  const search = `${REPO} is:pr is:merged merged:${toGithubStamp(from)}..${toGithubStamp(to)}`;
+// PRs submitted (created) inside the window that have since been merged, whenever
+// the merge happened. The rule scores by submission date, not merge date.
+async function fetchEventPrs(token: string, from: string, to: string): Promise<PrNode[]> {
+  const search = `${REPO} is:pr is:merged created:${toGithubStamp(from)}..${toGithubStamp(to)}`;
   const prs: PrNode[] = [];
   let after: string | null = null;
 
@@ -141,7 +143,7 @@ export async function fetchLeaderboard(
   const to = window?.to ?? config.endsAt;
   const cutoff = Date.parse(config.qualifyingBefore);
 
-  const prs = await fetchMergedPrs(token, from, to);
+  const prs = await fetchEventPrs(token, from, to);
 
   const byLogin = new Map<string, LeaderboardEntry>();
   for (const pr of prs) {

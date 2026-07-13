@@ -7,11 +7,15 @@ const pad = (n: number) => String(n).padStart(2, "0");
 </script>
 
 <template>
-  <ol class="panel mx-auto w-full max-w-[42rem] divide-y divide-line/60">
+  <TransitionGroup
+    tag="ol"
+    move-class="transition-transform duration-700 ease-out"
+    class="panel mx-auto w-full max-w-[42rem] divide-y divide-line/60"
+  >
     <li
       v-for="e in entries"
       :key="e.login"
-      class="flex items-center gap-4 px-4 py-3"
+      class="flex items-center gap-4 px-4 py-3 transition-opacity duration-500"
       :class="e.rank > 10 ? 'opacity-45' : ''"
     >
       <span
@@ -42,5 +46,5 @@ const pad = (n: number) => String(n).padStart(2, "0");
         </p>
       </div>
     </li>
-  </ol>
+  </TransitionGroup>
 </template>
