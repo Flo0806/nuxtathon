@@ -2,6 +2,20 @@
 
 :root {
   color-scheme: dark;
+
+  /* Palette mirrored from the UnoCSS theme so scoped component CSS and utility
+     classes share one source of truth. */
+  --base: #04100b;
+  --surface: #081a13;
+  --panel: #0e241a;
+  --line: #1c4a38;
+  --primary: #00dc82;
+  --mint: #80eec0;
+  --deep: #003543;
+  --amber: #ffb020;
+  --fg: #d7fcec;
+  --muted: #6fa891;
+  --faint: #3c5c4e;
 }
 
 html {

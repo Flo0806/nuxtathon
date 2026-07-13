@@ -1,6 +1,8 @@
 // Static, committed event configuration (source: config/event.json).
 export interface EventConfig {
   title: string;
+  // Short kicker above the title, e.g. "#1 · Community Hackathon".
+  eyebrow: string;
   // Markdown. Rendered on the public site.
   description: string;
   // Absolute UTC instants. Timezone is a display concern only (see displayTimeZone).
