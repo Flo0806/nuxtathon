@@ -8,5 +8,8 @@
       <slot />
       <AppFooter />
     </div>
+
+    <AppToast />
+    <AppConfirm />
   </div>
 </template>
