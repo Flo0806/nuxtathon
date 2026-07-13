@@ -1,5 +1,5 @@
-// Archive the current final (if any) and clear the live event, ready for a new
-// Nuxtathon. The archive is preserved.
+// Clear the live event for a new Nuxtathon. The result was already archived on
+// fire; the upsert below is a defensive safety net. The archive is preserved.
 export default defineEventHandler(async () => {
   const state = await readRuntimeState();
 

@@ -1,21 +1,13 @@
 <script setup lang="ts">
-import type { LeaderboardEntry, ManualCredit } from "#shared/types/event";
+import type { FinalResult, LeaderboardEntry, ManualCredit } from "#shared/types/event";
 
-interface ArchiveEntry {
-  title: string;
-  startsAt: string;
-  endsAt: string;
-  finalizedAt: string;
-  winner: string | null;
-  contributors: number;
-}
 interface Overview {
   phase: string;
   prizesReleased: boolean;
   credits: ManualCredit[];
   finalized: boolean;
   finalizedAt: string | null;
-  archive: ArchiveEntry[];
+  archiveCount: number;
 }
 interface Board {
   entries: LeaderboardEntry[];
@@ -27,6 +19,7 @@ const { confirm } = useConfirm();
 
 const overview = ref<Overview | null>(null);
 const board = ref<Board | null>(null);
+const archive = ref<FinalResult[]>([]);
 const credits = ref<ManualCredit[]>([]);
 const busy = ref(false);
 const loading = ref(false);
@@ -59,10 +52,15 @@ async function loadOverview() {
 async function loadBoard() {
   board.value = await $fetch<Board>("/api/leaderboard");
 }
+async function loadArchive() {
+  archive.value = await $fetch<FinalResult[]>("/api/admin/archive", {
+    headers: auth.authHeaders(),
+  });
+}
 async function loadAll() {
   loading.value = true;
   try {
-    await Promise.all([loadOverview(), loadBoard()]);
+    await Promise.all([loadOverview(), loadBoard(), loadArchive()]);
   } finally {
     loading.value = false;
   }
@@ -80,7 +78,7 @@ async function submitLogin() {
     credits.value = o.credits.map((c) => ({ ...c }));
     loginPass.value = "";
     showLogin.value = false;
-    await loadBoard();
+    await Promise.all([loadBoard(), loadArchive()]);
   } catch (e) {
     toast.error(is401(e) ? "Wrong username or password" : errMsg(e));
   } finally {
@@ -132,6 +130,23 @@ const preview = computed(() =>
 const addCredit = () => credits.value.push({ login: "", amount: 1, note: "" });
 const removeCredit = (i: number) => credits.value.splice(i, 1);
 
+function downloadJson(filename: string, data: unknown) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+const slug = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+const downloadEntry = (entry: FinalResult) =>
+  downloadJson(`nuxtathon-${slug(entry.title)}-${entry.finalizedAt.slice(0, 10)}.json`, entry);
+
 async function fire() {
   const ok = await confirm({
     title: "Fire",
@@ -142,8 +157,9 @@ async function fire() {
 }
 async function reset() {
   const ok = await confirm({
-    title: "Archive & reset",
-    message: "Archive the current result and clear the live event for a new Nuxtathon?",
+    title: "Reset event",
+    message:
+      "Clear the live event to start a new Nuxtathon? The finalized result stays in the archive.",
     confirmLabel: "Reset",
   });
   if (ok) act("/api/admin/reset", "Reset - ready for a new event");
@@ -226,7 +242,7 @@ onMounted(async () => {
           @click="reset"
         >
           <span class="i-ph-trash" aria-hidden="true" />
-          Archive &amp; reset
+          Reset
         </button>
       </div>
 
@@ -261,19 +277,29 @@ onMounted(async () => {
         <LeaderboardBoard :entries="preview" />
       </section>
 
-      <section v-if="overview.archive.length" class="flex flex-col gap-3">
-        <h2 class="font-mono text-sm uppercase tracking-wider text-fg">Archive</h2>
+      <section v-if="archive.length" class="flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+          <h2 class="font-mono text-sm uppercase tracking-wider text-fg">Archive</h2>
+          <button class="btn" @click="downloadJson('nuxtathon-archive.json', archive)">
+            <span class="i-ph-download-simple" aria-hidden="true" />
+            Download all
+          </button>
+        </div>
         <div
-          v-for="a in overview.archive"
+          v-for="a in archive"
           :key="a.finalizedAt"
-          class="panel flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 font-mono text-xs text-muted"
+          class="panel flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 font-mono text-xs text-muted"
         >
           <span class="text-fg">{{ a.title }}</span>
           <span
-            >winner <span class="text-primary">{{ a.winner ?? "-" }}</span></span
+            >winner <span class="text-primary">{{ a.standings[0]?.login ?? "-" }}</span></span
           >
-          <span>{{ a.contributors }} contributors</span>
+          <span>{{ a.standings.length }} contributors</span>
           <span>{{ a.finalizedAt }}</span>
+          <button class="btn ml-auto" @click="downloadEntry(a)">
+            <span class="i-ph-download-simple" aria-hidden="true" />
+            JSON
+          </button>
         </div>
       </section>
     </template>
