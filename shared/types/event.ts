@@ -32,6 +32,13 @@ export interface LeaderboardEntry {
   rank: number;
 }
 
+// Window-wide activity counters shown alongside the ranking.
+export interface EventStats {
+  submitted: number;
+  merged: number;
+  issuesClosed: number;
+}
+
 // One frozen ranking order, retained so the client can replay recent reshuffles
 // as the load-time animation.
 export interface Snapshot {

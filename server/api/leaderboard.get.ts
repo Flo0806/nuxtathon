@@ -7,22 +7,20 @@ export default defineEventHandler(async (event) => {
   }
 
   const q = getQuery(event);
-  const entries = await fetchLeaderboard(eventConfig, token, {
+  const result = await fetchLeaderboard(eventConfig, token, {
     from: q.from ? String(q.from) : undefined,
     to: q.to ? String(q.to) : undefined,
   });
 
-  // Record a ranking snapshot so the reshuffle history stays fresh. This will
-  // later move inside the 5-minute cached refresh; for now it also exercises the
-  // KV write path end to end.
+  // Snapshot write is provisional here; it moves into the cached refresh later.
   const state = await readRuntimeState();
   await writeRuntimeState(
     pushSnapshot(
       state,
-      entries.map((entry) => entry.login),
+      result.entries.map((entry) => entry.login),
       new Date().toISOString(),
     ),
   );
 
-  return entries;
+  return result;
 });
