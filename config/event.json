@@ -1,9 +1,9 @@
 {
   "title": "Nuxtathon",
   "eyebrow": "#1 · Community Hackathon",
-  "description": "The first **Nuxt** community hackathon. Two days, one mission: close as many open `nuxt/nuxt` issues as we can.",
+  "description": "The first **Nuxt** community hackathon. Two days, one mission: close as many open [`nuxt/nuxt`](https://github.com/nuxt/nuxt) issues as we can.",
   "rules": [
-    "All issues and PRs must target the core `nuxt/nuxt` repository.",
+    "All issues and PRs must target the core [`nuxt/nuxt`](https://github.com/nuxt/nuxt) repository.",
     "To count, an issue must have been created before 13 July."
   ],
   "startsAt": "2026-07-18T00:00:00.000Z",
