@@ -1,5 +1,7 @@
 # Nuxtathon Leaderboard
 
+![Nuxtathon](./public/og.png)
+
 A live leaderboard for Nuxtathon, the community hackathon on the `nuxt/nuxt`
 repository ([announcement](https://github.com/nuxt/nuxt/issues/35561)). During
 the event it ranks contributors by the number of qualifying issues their merged
@@ -17,7 +19,16 @@ A pull request counts toward a contributor's score when all of these hold:
   if it is merged later.
 - It has been **merged**.
 - It **closes at least one issue** created before `qualifyingBefore`.
-- Its author is a real user. Bots such as renovate and dependabot are excluded.
+
+**Who gets credit.** Every contributor to a qualifying PR, not just the opener:
+the commit authors and any `Co-authored-by` names that resolve to a GitHub
+account each get full credit. Issues are deduped per person, so the same issue
+counts once even if it shows up on more than one of their PRs.
+
+**Who is excluded.** Bots (GitHub Apps, `[bot]` accounts like `renovate[bot]`,
+and AI co-author attributions such as `claude`) and the core team listed in
+`coreTeam`. Core team contributions are still tallied and archived, just kept out
+of the prize ranking.
 
 Score = qualifying closed issues + manual credits (see Admin). The board shows
 the merged-PR count as a secondary stat, plus window-wide counters for submitted
@@ -27,15 +38,16 @@ and merged PRs (both bot-free).
 
 Static event config lives in `config/event.json`:
 
-| Field              | Meaning                                    |
-| ------------------ | ------------------------------------------ |
-| `title`            | Hero title, e.g. "Nuxtathon"               |
-| `eyebrow`          | Kicker above the title                     |
-| `description`      | Short blurb, Markdown                      |
-| `startsAt`         | Event start, ISO 8601 UTC                  |
-| `endsAt`           | Event end, ISO 8601 UTC                    |
-| `qualifyingBefore` | Issues created before this instant qualify |
-| `displayTimeZone`  | IANA zone for rendering dates, e.g. "UTC"  |
+| Field              | Meaning                                            |
+| ------------------ | -------------------------------------------------- |
+| `title`            | Hero title, e.g. "Nuxtathon"                       |
+| `eyebrow`          | Kicker above the title                             |
+| `description`      | Short blurb, Markdown                              |
+| `startsAt`         | Event start, ISO 8601 UTC                          |
+| `endsAt`           | Event end, ISO 8601 UTC                            |
+| `qualifyingBefore` | Issues created before this instant qualify         |
+| `coreTeam`         | GitHub logins kept out of the ranking (organizers) |
+| `displayTimeZone`  | IANA zone for rendering dates, e.g. "UTC"          |
 
 Dates are absolute UTC instants; the timezone only affects display.
 
