@@ -10,6 +10,9 @@ export interface EventConfig {
   endsAt: string;
   // Rule cutoff: an issue only qualifies if it was created before this instant.
   qualifyingBefore: string;
+  // GitHub logins excluded from the prize ranking (organizers / core team).
+  // Their contributions are still tallied and shown separately.
+  coreTeam: string[];
   // IANA zone used purely for rendering dates and the countdown, e.g. "UTC".
   displayTimeZone: string;
 }
@@ -62,6 +65,7 @@ export interface FinalResult {
   endsAt: string;
   stats: EventStats;
   standings: LeaderboardEntry[];
+  coreTeam: LeaderboardEntry[];
 }
 
 // Mutable, admin-writable state. Snapshots live under a separate storage key

@@ -17,6 +17,7 @@ export default defineEventHandler(async () => {
     endsAt: eventConfig.endsAt,
     stats: result.stats,
     standings: applyCredits(result.entries, state.credits),
+    coreTeam: result.coreTeam,
   };
 
   // Upsert by (title, startsAt) so re-firing the same event does not duplicate.

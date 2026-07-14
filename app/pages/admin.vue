@@ -11,6 +11,7 @@ interface Overview {
 }
 interface Board {
   entries: LeaderboardEntry[];
+  coreTeam: LeaderboardEntry[];
 }
 
 const toast = useToast();
@@ -275,6 +276,28 @@ onMounted(async () => {
           Standings <span class="text-muted">(with edited credits)</span>
         </h2>
         <LeaderboardBoard :entries="preview" />
+      </section>
+
+      <section v-if="board?.coreTeam?.length" class="flex flex-col gap-3">
+        <h2 class="font-mono text-sm uppercase tracking-wider text-fg">
+          Core team <span class="text-muted">(excluded from ranking)</span>
+        </h2>
+        <div class="panel flex flex-col divide-y divide-line/60">
+          <div v-for="c in board.coreTeam" :key="c.login" class="flex items-center gap-3 px-4 py-2">
+            <img
+              :src="c.avatarUrl"
+              :alt="c.login"
+              width="28"
+              height="28"
+              loading="lazy"
+              class="h-7 w-7 rounded-full border border-line object-cover"
+            />
+            <span class="font-mono text-sm text-fg">{{ c.name || c.login }}</span>
+            <span class="ml-auto font-mono text-xs text-muted">
+              {{ c.closedIssues }} issues / {{ c.mergedPRs }} PRs
+            </span>
+          </div>
+        </div>
       </section>
 
       <section v-if="archive.length" class="flex flex-col gap-3">

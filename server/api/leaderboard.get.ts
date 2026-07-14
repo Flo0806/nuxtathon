@@ -8,6 +8,7 @@ export default defineCachedEventHandler(
     if (state.final) {
       return {
         entries: state.final.standings,
+        coreTeam: state.final.coreTeam ?? [],
         stats: state.final.stats,
         fetchedAt: state.final.finalizedAt,
       };
@@ -27,7 +28,12 @@ export default defineCachedEventHandler(
       fetchedAt,
     );
 
-    return { entries, stats: result.stats, fetchedAt };
+    return { entries, coreTeam: result.coreTeam, stats: result.stats, fetchedAt };
   },
-  { maxAge: 300, swr: true, name: "leaderboard", getKey: () => "current" },
+  {
+    maxAge: 300,
+    swr: true,
+    name: "leaderboard",
+    getKey: () => `${eventConfig.startsAt}:${eventConfig.endsAt}:${eventConfig.qualifyingBefore}`,
+  },
 );

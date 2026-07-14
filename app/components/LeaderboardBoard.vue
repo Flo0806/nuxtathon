@@ -10,7 +10,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
   <TransitionGroup
     tag="ol"
     move-class="transition-transform duration-700 ease-out"
-    class="panel mx-auto w-full max-w-[42rem] divide-y divide-line/60"
+    class="panel w-full divide-y divide-line/60"
   >
     <li
       v-for="e in entries"
@@ -19,7 +19,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
       :class="e.rank > 10 ? 'opacity-45' : ''"
     >
       <span
-        class="w-9 shrink-0 text-right font-mono text-sm tabular-nums"
+        class="w-7 shrink-0 text-right font-mono text-sm tabular-nums"
         :class="e.rank === 1 ? 'text-primary' : 'text-muted'"
       >
         {{ pad(e.rank) }}

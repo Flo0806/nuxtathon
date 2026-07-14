@@ -83,13 +83,10 @@ const dateRange = computed(() => {
         Browse open issues
       </a>
 
-      <section v-if="showLeaderboard" class="flex w-full flex-col gap-4">
+      <section v-if="showLeaderboard" class="mx-auto flex w-full max-w-[42rem] flex-col gap-4">
         <LeaderboardStats :stats="store.stats" />
         <LeaderboardBoard v-if="store.leaderboard.length" :entries="store.leaderboard" />
-        <p
-          v-else
-          class="panel mx-auto max-w-[42rem] px-6 py-10 text-center font-mono text-sm text-muted"
-        >
+        <p v-else class="panel px-6 py-10 text-center font-mono text-sm text-muted">
           No issues closed yet. The ranking fills as merged PRs land.
         </p>
         <p v-if="updatedAt" class="font-mono text-[0.62rem] uppercase tracking-wider text-muted">

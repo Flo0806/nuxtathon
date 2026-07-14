@@ -11,7 +11,7 @@ const tiles = [
 </script>
 
 <template>
-  <div class="mx-auto grid w-full max-w-[42rem] grid-cols-3 gap-3">
+  <div class="grid w-full grid-cols-3 gap-3">
     <div v-for="t in tiles" :key="t.key" class="panel flex flex-col items-center gap-1 px-3 py-4">
       <span class="text-lg text-muted" :class="t.icon" aria-hidden="true" />
       <span class="font-mono text-2xl font-extrabold tabular-nums" :class="t.tone">

@@ -131,58 +131,81 @@ async function countHumanPrs(token: string, search: string): Promise<number> {
   return count;
 }
 
-// Ranking plus window-wide activity counters. A PR contributes only issues
-// created before the qualifying cutoff; bot and issue-less PRs score nothing,
-// and the counters exclude bots to match.
+// Bot accounts that can appear as regular users, on top of the __typename check.
+const BOT_LOGINS = new Set(
+  ["renovate", "dependabot", "dependabot-preview", "autofix-ci", "github-actions", "codecov"].map(
+    (l) => l.toLowerCase(),
+  ),
+);
+
+function makeEntry(author: PrAuthor): LeaderboardEntry {
+  return {
+    login: author.login,
+    name: author.name ?? null,
+    avatarUrl: author.avatarUrl,
+    closedIssues: 0,
+    mergedPRs: 0,
+    manualCredits: 0,
+    score: 0,
+    rank: 0,
+  };
+}
+
+function rank(entries: LeaderboardEntry[]): LeaderboardEntry[] {
+  entries.sort(
+    (a, b) => b.score - a.score || b.mergedPRs - a.mergedPRs || a.login.localeCompare(b.login),
+  );
+  entries.forEach((entry, index) => {
+    entry.rank = index + 1;
+  });
+  return entries;
+}
+
+// Ranking plus window-wide activity counters. Core team members are collected
+// separately (acknowledged, not competing for prizes); bots and issue-less PRs
+// score nothing.
 export async function fetchLeaderboard(
   config: EventConfig,
   token: string,
   window?: { from?: string; to?: string },
-): Promise<{ entries: LeaderboardEntry[]; stats: EventStats }> {
+): Promise<{ entries: LeaderboardEntry[]; coreTeam: LeaderboardEntry[]; stats: EventStats }> {
   const from = window?.from ?? config.startsAt;
   const to = window?.to ?? config.endsAt;
   const cutoff = Date.parse(config.qualifyingBefore);
+  const coreSet = new Set((config.coreTeam ?? []).map((l) => l.toLowerCase()));
 
   const prs = await fetchEventPrs(token, from, to);
 
   const byLogin = new Map<string, LeaderboardEntry>();
+  const coreByLogin = new Map<string, LeaderboardEntry>();
   for (const pr of prs) {
-    if (!isHuman(pr.author) || !pr.author) continue;
+    const author = pr.author;
+    if (!author || author.__typename !== "User" || BOT_LOGINS.has(author.login.toLowerCase())) {
+      continue;
+    }
 
     const qualifying = pr.closingIssuesReferences.nodes.filter(
       (issue) => Date.parse(issue.createdAt) < cutoff,
     );
     if (qualifying.length === 0) continue;
 
-    const entry = byLogin.get(pr.author.login) ?? {
-      login: pr.author.login,
-      name: pr.author.name ?? null,
-      avatarUrl: pr.author.avatarUrl,
-      closedIssues: 0,
-      mergedPRs: 0,
-      manualCredits: 0,
-      score: 0,
-      rank: 0,
-    };
+    const target = coreSet.has(author.login.toLowerCase()) ? coreByLogin : byLogin;
+    const entry = target.get(author.login) ?? makeEntry(author);
     entry.closedIssues += qualifying.length;
     entry.mergedPRs += 1;
     entry.score = entry.closedIssues + entry.manualCredits;
-    byLogin.set(pr.author.login, entry);
+    target.set(author.login, entry);
   }
 
-  const entries = [...byLogin.values()].sort(
-    (a, b) => b.score - a.score || b.mergedPRs - a.mergedPRs || a.login.localeCompare(b.login),
-  );
-  entries.forEach((entry, index) => {
-    entry.rank = index + 1;
-  });
+  const entries = rank([...byLogin.values()]);
+  const coreTeam = rank([...coreByLogin.values()]);
 
-  const issuesClosed = entries.reduce((sum, entry) => sum + entry.closedIssues, 0);
+  const issuesClosed = [...entries, ...coreTeam].reduce((sum, e) => sum + e.closedIssues, 0);
   const merged = prs.filter((pr) => isHuman(pr.author)).length;
   const submitted = await countHumanPrs(
     token,
     `${REPO} is:pr created:${toGithubStamp(from)}..${toGithubStamp(to)}`,
   );
 
-  return { entries, stats: { submitted, merged, issuesClosed } };
+  return { entries, coreTeam, stats: { submitted, merged, issuesClosed } };
 }
