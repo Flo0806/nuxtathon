@@ -89,6 +89,7 @@ const dateRange = computed(() => {
       />
       <WinnerReveal v-else-if="winner" :entry="winner" />
       <p class="font-mono text-[0.72rem] tracking-[0.2em] uppercase text-muted">{{ dateRange }}</p>
+      <OnlineCounter />
       <div
         class="flex flex-wrap items-center justify-center gap-3 animate-fade-up motion-reduce:animate-none"
       >

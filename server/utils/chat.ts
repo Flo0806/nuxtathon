@@ -81,6 +81,13 @@ export async function broadcastRemove(id: string): Promise<void> {
   await Promise.all([...clients].map((c) => c.push({ event: "remove", data: id })));
 }
 
+// Open SSE connections stand in for "online" viewers. Crawlers do not run JS so
+// they never connect, which keeps bots out of the count for free.
+export async function broadcastPresence(): Promise<void> {
+  const count = String(clients.size);
+  await Promise.all([...clients].map((c) => c.push({ event: "presence", data: count })));
+}
+
 export function isChatAdmin(login: string): boolean {
   const admins = String(useRuntimeConfig().chatAdmins)
     .split(",")

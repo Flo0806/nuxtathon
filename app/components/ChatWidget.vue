@@ -10,7 +10,10 @@ const sending = ref(false);
 const listEl = ref<HTMLElement | null>(null);
 let source: EventSource | undefined;
 const now = ref(Date.now());
+const online = useState<number>("chat-online", () => 0);
 let ticker: ReturnType<typeof setInterval> | undefined;
+// Keep the in-memory list bounded on a long-lived tab (server history is capped).
+const MAX_CLIENT = 200;
 
 async function scrollToBottom() {
   await nextTick();
@@ -77,9 +80,15 @@ onMounted(async () => {
       messages.value[i] = msg;
     } else {
       messages.value.push(msg);
+      if (messages.value.length > MAX_CLIENT) {
+        messages.value.splice(0, messages.value.length - MAX_CLIENT);
+      }
       scrollToBottom();
     }
   };
+  source.addEventListener("presence", (e) => {
+    online.value = Number((e as MessageEvent).data) || 0;
+  });
   source.addEventListener("remove", (e) => {
     messages.value = messages.value.filter((m) => m.id !== (e as MessageEvent).data);
   });
