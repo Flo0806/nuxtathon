@@ -40,12 +40,18 @@ export default defineCachedEventHandler(
     const entries = applyCredits(result.entries, state.credits);
     const fetchedAt = new Date().toISOString();
 
+    // Fold PR-less manual closes into the headline count, keyed by issue number so
+    // an issue already closed by a PR is never counted twice.
+    const closed = new Set(result.closedIssues);
+    for (const c of state.credits) if (c.issueNumber) closed.add(c.issueNumber);
+    const stats = { ...result.stats, issuesClosed: closed.size };
+
     await appendSnapshot(
       entries.map((entry) => entry.login),
       fetchedAt,
     );
 
-    return { entries, coreTeam: result.coreTeam, stats: result.stats, fetchedAt };
+    return { entries, coreTeam: result.coreTeam, stats, fetchedAt };
   },
   {
     maxAge: 300,

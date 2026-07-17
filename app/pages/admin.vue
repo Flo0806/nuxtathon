@@ -22,6 +22,8 @@ const overview = ref<Overview | null>(null);
 const board = ref<Board | null>(null);
 const archive = ref<FinalResult[]>([]);
 const credits = ref<ManualCredit[]>([]);
+// Issue numbers the last save rejected, so their row inputs can be flagged.
+const invalidIssues = ref(new Set<number>());
 const busy = ref(false);
 const loading = ref(false);
 
@@ -102,6 +104,7 @@ async function act(path: string, successMsg: string) {
 
 async function saveCredits() {
   busy.value = true;
+  invalidIssues.value = new Set();
   try {
     await $fetch("/api/admin/credits", {
       method: "POST",
@@ -109,26 +112,23 @@ async function saveCredits() {
       body: { credits: credits.value },
     });
     toast.success("Credits saved");
-    await loadOverview();
+    await Promise.all([loadOverview(), loadBoard()]);
   } catch (e) {
+    // The 422 carries the offending issue numbers so we can point at the rows.
+    const bad = (e as { data?: { data?: { invalid?: number[] } } })?.data?.data?.invalid;
+    if (Array.isArray(bad)) invalidIssues.value = new Set(bad);
     if (!requireAuth(e)) toast.error(errMsg(e));
   } finally {
     busy.value = false;
   }
 }
 
-// Instant standings preview: strip the server-applied credits and re-apply the
-// edited ones, so the ranking shifts live without a GitHub recompute.
-const preview = computed(() =>
-  board.value
-    ? applyCredits(
-        board.value.entries.map((e) => ({ ...e, manualCredits: 0 })),
-        credits.value,
-      ).filter((e) => e.score > 0)
-    : [],
-);
+// Standings show the last saved state (the server applies credits when the board
+// is fetched). Editing the list below does not move them until Save, so a GitHub
+// avatar request is not fired for every keystroke in a login field.
+const preview = computed(() => (board.value?.entries ?? []).filter((e) => e.score > 0));
 
-const addCredit = () => credits.value.push({ login: "", amount: 1, note: "" });
+const addCredit = () => credits.value.push({ login: "", amount: 1, note: "", issueNumber: undefined });
 const removeCredit = (i: number) => credits.value.splice(i, 1);
 
 function downloadJson(filename: string, data: unknown) {
@@ -263,7 +263,21 @@ onMounted(async () => {
         <div v-for="(c, i) in credits" :key="i" class="flex flex-wrap items-center gap-2">
           <input v-model="c.login" placeholder="github login" class="input w-40" />
           <input v-model.number="c.amount" type="number" aria-label="points" class="input w-20" />
-          <input v-model="c.note" placeholder="note (optional)" class="input min-w-40 flex-1" />
+          <input
+            v-model.number="c.issueNumber"
+            type="number"
+            placeholder="issue #"
+            aria-label="issue number (optional)"
+            class="input w-28"
+            :class="{ '!border-red-500 text-red-400': c.issueNumber && invalidIssues.has(c.issueNumber) }"
+            @input="invalidIssues.clear()"
+          />
+          <input
+            v-model="c.note"
+            :title="c.note || undefined"
+            placeholder="note (optional)"
+            class="input min-w-40 flex-1 truncate"
+          />
           <button class="btn" :disabled="busy" @click="removeCredit(i)">
             <span class="i-ph-x" aria-hidden="true" />
           </button>
@@ -273,7 +287,7 @@ onMounted(async () => {
 
       <section v-if="preview.length" class="flex flex-col gap-3">
         <h2 class="font-mono text-sm uppercase tracking-wider text-fg">
-          Standings <span class="text-muted">(with edited credits)</span>
+          Standings <span class="text-muted">(saved)</span>
         </h2>
         <LeaderboardBoard :entries="preview" />
       </section>

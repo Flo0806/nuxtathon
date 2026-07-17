@@ -57,6 +57,9 @@ export interface ManualCredit {
   login: string;
   amount: number;
   note: string;
+  // Optional nuxt/nuxt issue this credit stands for. Validated on save; when set,
+  // it folds into the public "Issues closed" count (deduped against PR-closed).
+  issueNumber?: number;
 }
 
 // A frozen event result. Written on "fire" and kept so the ranking stops moving

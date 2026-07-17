@@ -113,6 +113,37 @@ async function graphql(token: string, query: string, variables: object): Promise
   return res.data;
 }
 
+// Confirm each number is a real issue in the core repo. Backs the manual-credit
+// save: a credit may only point at an issue that exists, so a fat-fingered number
+// can never slip into the closed-issue count. One batched query, alias per number.
+// GitHub answers a missing issue with a NOT_FOUND error *and* partial data (null
+// for that field), so we bypass the shared graphql() helper (which treats any
+// errors array as fatal) and classify per alias: resolved number -> valid, else
+// invalid. Field-level errors are expected here, not a hard failure.
+export async function validateIssues(
+  token: string,
+  numbers: number[],
+): Promise<{ valid: number[]; invalid: number[] }> {
+  const unique = [...new Set(numbers.filter((n) => Number.isInteger(n) && n > 0))];
+  if (unique.length === 0) return { valid: [], invalid: [] };
+
+  const fields = unique.map((n) => `i${n}: issue(number: ${n}) { number }`).join("\n");
+  const query = `query { repository(owner: "nuxt", name: "nuxt") { ${fields} } }`;
+  const res = await $fetch<{
+    data?: { repository?: Record<string, { number: number } | null> | null };
+  }>(GITHUB_GRAPHQL, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "user-agent": "nuxtathon-leaderboard" },
+    body: { query, variables: {} },
+  });
+  const repo = res?.data?.repository ?? null;
+
+  const valid: number[] = [];
+  const invalid: number[] = [];
+  for (const n of unique) (repo?.[`i${n}`]?.number === n ? valid : invalid).push(n);
+  return { valid, invalid };
+}
+
 // Timestamped form GitHub search accepts in `merged:from..to`, pinning the window
 // to the second instead of relying on day granularity.
 function toGithubStamp(iso: string): string {
@@ -234,7 +265,14 @@ export async function fetchLeaderboard(
   config: EventConfig,
   token: string,
   window?: { from?: string; to?: string },
-): Promise<{ entries: LeaderboardEntry[]; coreTeam: LeaderboardEntry[]; stats: EventStats }> {
+): Promise<{
+  entries: LeaderboardEntry[];
+  coreTeam: LeaderboardEntry[];
+  stats: EventStats;
+  // Issue numbers closed by event PRs, exposed so the endpoint can dedup manual
+  // credits against them before counting.
+  closedIssues: number[];
+}> {
   const from = window?.from ?? config.startsAt;
   const to = window?.to ?? config.endsAt;
   const cutoff = Date.parse(config.qualifyingBefore);
@@ -244,15 +282,19 @@ export async function fetchLeaderboard(
 
   const byLogin = new Map<string, Tally>();
   const coreByLogin = new Map<string, Tally>();
-  const allIssues = new Set<number>();
+  // Public headline count: every issue an event PR closed, whenever the issue was
+  // created. Scoring below still credits only pre-announcement issues, but the
+  // visible counter should tick for anything resolved during the event, including
+  // issues opened mid-event (Daniel files a fresh bug, someone fixes it same day).
+  const closedInWindow = new Set<number>();
 
   for (const pr of prs) {
+    for (const ref of pr.closingIssuesReferences.nodes) closedInWindow.add(ref.number);
     const qualifying = pr.closingIssuesReferences.nodes.filter(
       (issue) => Date.parse(issue.createdAt) < cutoff,
     );
     if (qualifying.length === 0) continue;
     const issueNumbers = qualifying.map((issue) => issue.number);
-    for (const n of issueNumbers) allIssues.add(n);
 
     // Full credit for every contributor; issues are deduped per person via the
     // set, so the same issue counts once even across several of their PRs.
@@ -274,12 +316,17 @@ export async function fetchLeaderboard(
   const entries = rank([...byLogin.values()].map(toEntry));
   const coreTeam = rank([...coreByLogin.values()].map(toEntry));
 
-  const issuesClosed = allIssues.size;
+  const issuesClosed = closedInWindow.size;
   const merged = prs.filter((pr) => isHuman(pr.author)).length;
   const submitted = await countHumanPrs(
     token,
     `${REPO} is:pr created:${toGithubStamp(from)}..${toGithubStamp(to)}`,
   );
 
-  return { entries, coreTeam, stats: { submitted, merged, issuesClosed } };
+  return {
+    entries,
+    coreTeam,
+    stats: { submitted, merged, issuesClosed },
+    closedIssues: [...closedInWindow],
+  };
 }
