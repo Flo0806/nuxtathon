@@ -2,7 +2,7 @@
 export default defineNuxtConfig({
   compatibilityDate: "2025-07-15",
   devtools: { enabled: true },
-  modules: ["@unocss/nuxt", "@pinia/nuxt"],
+  modules: ["@unocss/nuxt", "@pinia/nuxt", "nuxt-auth-utils"],
   css: ["~/assets/css/main.css"],
   runtimeConfig: {
     // Server-only secrets, populated from NUXT_* env vars at runtime.

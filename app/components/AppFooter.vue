@@ -9,6 +9,7 @@
       <span class="i-simple-icons-github" aria-hidden="true" />
       Source
     </a>
+    <AuthButton />
     <p class="font-mono text-[0.7rem] text-muted">
       Made with <span class="text-amber">&#9829;</span> by
       <a
