@@ -19,5 +19,7 @@
     "antfu",
     "lihbr"
   ],
+  "closeMarker": "nuxtathon closed",
+  "markerAuthors": ["danielroe"],
   "displayTimeZone": "UTC"
 }

@@ -53,7 +53,8 @@ async function loadOverview() {
   credits.value = o.credits.map((c) => ({ ...c }));
 }
 async function loadBoard() {
-  board.value = await $fetch<Board>("/api/leaderboard");
+  // Bust the browser cache; server keys on config, no extra GitHub hit.
+  board.value = await $fetch<Board>("/api/leaderboard", { query: { t: Date.now() } });
 }
 async function loadArchive() {
   archive.value = await $fetch<FinalResult[]>("/api/admin/archive", {

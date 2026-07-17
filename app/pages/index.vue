@@ -89,7 +89,9 @@ const dateRange = computed(() => {
       />
       <WinnerReveal v-else-if="winner" :entry="winner" />
       <p class="font-mono text-[0.72rem] tracking-[0.2em] uppercase text-muted">{{ dateRange }}</p>
-      <div class="flex flex-wrap items-center justify-center gap-3 animate-fade-up motion-reduce:animate-none">
+      <div
+        class="flex flex-wrap items-center justify-center gap-3 animate-fade-up motion-reduce:animate-none"
+      >
         <a
           href="https://github.com/nuxt/nuxt/issues?q=sort%3Aupdated-desc%20is%3Aissue%20state%3Aopen%20created%3A%3C2026-07-13"
           target="_blank"

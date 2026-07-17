@@ -16,6 +16,13 @@ export interface EventConfig {
   // GitHub logins excluded from the prize ranking (organizers / core team).
   // Their contributions are still tallied and shown separately.
   coreTeam: string[];
+  // Comment marker that lets an organizer credit a PR-less close, e.g. a comment
+  // "nuxtathon closed @user". Keyword is matched case-insensitively; empty
+  // disables the feature. Only comments by markerAuthors are honored.
+  closeMarker: string;
+  // Logins allowed to post the marker. Keep this tight (organizers only) so
+  // credits cannot be farmed by self-mentioning under any closed issue.
+  markerAuthors: string[];
   // IANA zone used purely for rendering dates and the countdown, e.g. "UTC".
   displayTimeZone: string;
 }

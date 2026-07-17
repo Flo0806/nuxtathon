@@ -186,6 +186,88 @@ async function countHumanPrs(token: string, search: string): Promise<number> {
   return count;
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Pull "<keyword> @a @b" out of a comment body. The keyword is matched
+// case-insensitively and whitespace-tolerant ("Nuxtathon  Closed" still hits);
+// the @handles after it are returned verbatim, since a GitHub login must be kept
+// as written. Returns [] when the marker is absent.
+function parseCreditedLogins(body: string, keyword: string): string[] {
+  const kw = keyword.trim().split(/\s+/).map(escapeRegExp).join("\\s+");
+  const match = body.match(new RegExp(`${kw}\\s+((?:@[a-z0-9-]+[\\s,]*)+)`, "i"));
+  const run = match?.[1];
+  if (!run) return [];
+  return [...run.matchAll(/@([a-z0-9-]+)/gi)].flatMap((m) => (m[1] ? [m[1]] : []));
+}
+
+const MARKER_QUERY = `
+  query ($search: String!, $after: String) {
+    search(query: $search, type: ISSUE, first: 50, after: $after) {
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      nodes {
+        ... on Issue {
+          number
+          comments(last: 20) {
+            nodes {
+              body
+              author {
+                login
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+interface MarkerPage {
+  pageInfo: { endCursor: string | null; hasNextPage: boolean };
+  nodes: {
+    number?: number;
+    comments?: { nodes: { body: string; author: { login: string } | null }[] };
+  }[];
+}
+
+// Issues closed in the window carrying a credit marker in a comment from an
+// authorized organizer. The automated twin of a manual credit: only trusted
+// authors are honored, so nobody farms points by self-mentioning under a random
+// closed issue. Returns one entry per marked issue with its credited logins.
+async function fetchMarkerCredits(
+  token: string,
+  from: string,
+  to: string,
+  keyword: string,
+  authors: Set<string>,
+): Promise<{ issueNumber: number; logins: string[] }[]> {
+  const search = `${REPO} is:issue is:closed closed:${toGithubStamp(from)}..${toGithubStamp(to)}`;
+  const out: { issueNumber: number; logins: string[] }[] = [];
+  let after: string | null = null;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { search: result } = (await graphql(token, MARKER_QUERY, { search, after })) as {
+      search: MarkerPage;
+    };
+    for (const issue of result.nodes) {
+      if (typeof issue.number !== "number") continue;
+      const logins = new Set<string>();
+      for (const comment of issue.comments?.nodes ?? []) {
+        if (!comment.author || !authors.has(comment.author.login.toLowerCase())) continue;
+        for (const login of parseCreditedLogins(comment.body, keyword)) logins.add(login);
+      }
+      if (logins.size > 0) out.push({ issueNumber: issue.number, logins: [...logins] });
+    }
+    if (!result.pageInfo.hasNextPage) break;
+    after = result.pageInfo.endCursor;
+  }
+  return out;
+}
+
 // Bot accounts that can appear as regular users, on top of the __typename check.
 // Bots + AI-agent co-author attributions (e.g. "claude" from a Co-authored-by
 // trailer): credit belongs to the human, per the Nuxtathon rules.
@@ -310,6 +392,33 @@ export async function fetchLeaderboard(
       for (const n of issueNumbers) tally.issues.add(n);
       tally.prs += 1;
       target.set(contributor.login, tally);
+    }
+  }
+
+  // Organizer-marked closes: issues resolved without a PR that Daniel credits via
+  // a comment ("nuxtathon closed @user"). Authorized authors only, and any issue a
+  // PR already closed is skipped so neither the count nor the credit doubles up.
+  const markerAuthors = new Set((config.markerAuthors ?? []).map((l) => l.toLowerCase()));
+  const markers =
+    config.closeMarker && markerAuthors.size > 0
+      ? await fetchMarkerCredits(token, from, to, config.closeMarker, markerAuthors)
+      : [];
+
+  for (const { issueNumber, logins } of markers) {
+    if (closedInWindow.has(issueNumber)) continue;
+    closedInWindow.add(issueNumber);
+    for (const login of logins) {
+      if (isBotLogin(login)) continue;
+      const target = coreSet.has(login.toLowerCase()) ? coreByLogin : byLogin;
+      const tally = target.get(login) ?? {
+        login,
+        name: null,
+        avatarUrl: `https://github.com/${login}.png?size=80`,
+        issues: new Set<number>(),
+        prs: 0,
+      };
+      tally.issues.add(issueNumber);
+      target.set(login, tally);
     }
   }
 

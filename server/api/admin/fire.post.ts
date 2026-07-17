@@ -10,9 +10,11 @@ export default defineEventHandler(async () => {
   const state = await readRuntimeState();
   const result = await fetchLeaderboard(eventConfig, token);
 
-  // Same fold as the live endpoint, so the frozen headline count matches what was
-  // on screen: manual issue numbers unioned in, deduped against PR-closed.
+  // Same order as the live endpoint: dedup manual credits against PR/marker closes
+  // first, then fold the remaining manual issue numbers into the frozen count so it
+  // matches what was on screen.
   const closed = new Set(result.closedIssues);
+  const standings = applyCredits(result.entries, state.credits, closed);
   for (const c of state.credits) if (c.issueNumber) closed.add(c.issueNumber);
 
   const final: FinalResult = {
@@ -21,7 +23,7 @@ export default defineEventHandler(async () => {
     startsAt: eventConfig.startsAt,
     endsAt: eventConfig.endsAt,
     stats: { ...result.stats, issuesClosed: closed.size },
-    standings: applyCredits(result.entries, state.credits),
+    standings,
     coreTeam: result.coreTeam,
   };
 

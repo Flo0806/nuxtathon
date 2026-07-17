@@ -37,11 +37,12 @@ export const useEventStore = defineStore("event", () => {
   // `force` bypasses the hydration guard so the client poll can refresh.
   async function loadLeaderboard(force = false) {
     if (leaderboardLoaded.value && !force) return;
+    // Bust the browser cache; server keys on config only, so no extra GitHub hit.
     const res = await $fetch<{
       entries: LeaderboardEntry[];
       stats: EventStats;
       fetchedAt: string;
-    }>("/api/leaderboard");
+    }>("/api/leaderboard", { query: { t: Date.now() } });
     leaderboard.value = res.entries;
     stats.value = res.stats;
     fetchedAt.value = res.fetchedAt;

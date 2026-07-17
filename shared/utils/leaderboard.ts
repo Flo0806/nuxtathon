@@ -3,13 +3,20 @@ import type { LeaderboardEntry, ManualCredit } from "../types/event";
 // Merge admin credits into the GitHub-derived ranking, then re-sort and re-rank.
 // A credit for a login not in the list (issue closed without a PR) becomes a new
 // entry; its avatar comes from the github.com/<login>.png redirect.
+//
+// `alreadyClosed` holds issue numbers already credited by a PR or an organizer
+// marker. A manual credit pointing at one of those is dropped, so the same issue
+// cannot be scored twice via two mechanisms. Credits without an issueNumber (pure
+// discretionary points) always apply.
 export function applyCredits(
   entries: LeaderboardEntry[],
   credits: ManualCredit[],
+  alreadyClosed: Set<number> = new Set(),
 ): LeaderboardEntry[] {
   const byLogin = new Map(entries.map((e) => [e.login, { ...e }]));
 
   for (const credit of credits) {
+    if (credit.issueNumber && alreadyClosed.has(credit.issueNumber)) continue;
     const existing = byLogin.get(credit.login);
     if (existing) {
       existing.manualCredits += credit.amount;

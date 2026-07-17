@@ -10,6 +10,8 @@ const configKey = (): string =>
         eventConfig.endsAt,
         eventConfig.qualifyingBefore,
         eventConfig.coreTeam,
+        eventConfig.closeMarker,
+        eventConfig.markerAuthors,
       ]),
     )
     .digest("hex")
@@ -37,12 +39,13 @@ export default defineCachedEventHandler(
     }
 
     const result = await fetchLeaderboard(eventConfig, token);
-    const entries = applyCredits(result.entries, state.credits);
     const fetchedAt = new Date().toISOString();
 
-    // Fold PR-less manual closes into the headline count, keyed by issue number so
-    // an issue already closed by a PR is never counted twice.
+    // PR + marker closed issues. Passed to applyCredits first (so a manual credit
+    // for an already-covered issue is dropped, not double-scored), then the
+    // remaining manual issue numbers are folded in for the headline count.
     const closed = new Set(result.closedIssues);
+    const entries = applyCredits(result.entries, state.credits, closed);
     for (const c of state.credits) if (c.issueNumber) closed.add(c.issueNumber);
     const stats = { ...result.stats, issuesClosed: closed.size };
 
@@ -55,7 +58,7 @@ export default defineCachedEventHandler(
   },
   {
     maxAge: 300,
-    swr: true,
+    swr: false,
     name: "leaderboard",
     getKey: configKey,
   },
