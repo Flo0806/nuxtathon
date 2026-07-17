@@ -8,6 +8,7 @@ export default defineOAuthGitHubEventHandler({
         login: user.login,
         name: user.name ?? user.login,
         avatarUrl: user.avatar_url,
+        isChatAdmin: isChatAdmin(user.login),
       },
     });
     return sendRedirect(event, "/");

@@ -9,6 +9,8 @@ export default defineNuxtConfig({
     githubToken: "",
     adminUser: "",
     adminPassword: "",
+    // Comma-separated GitHub logins allowed to moderate the chat (NUXT_CHAT_ADMINS).
+    chatAdmins: "",
     public: {
       // Public site origin for absolute OG/canonical URLs. Set via
       // NUXT_PUBLIC_SITE_URL, e.g. "https://nuxtathon.live".

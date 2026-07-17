@@ -123,5 +123,6 @@ const dateRange = computed(() => {
         </p>
       </section>
     </template>
+    <ChatWidget />
   </main>
 </template>
