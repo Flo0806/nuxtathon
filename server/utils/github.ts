@@ -381,8 +381,12 @@ export async function fetchLeaderboard(
     // Full credit for every contributor; issues are deduped per person via the
     // set, so the same issue counts once even across several of their PRs.
     for (const contributor of collectContributors(pr).values()) {
-      const target = coreSet.has(contributor.login.toLowerCase()) ? coreByLogin : byLogin;
-      const tally = target.get(contributor.login) ?? {
+      // Key by lowercased login: GitHub logins are case-insensitive identities,
+      // so "Norbiros" and "norbiros" must land on the same tally. The display
+      // login keeps whatever case the first source (usually the PR) provided.
+      const key = contributor.login.toLowerCase();
+      const target = coreSet.has(key) ? coreByLogin : byLogin;
+      const tally = target.get(key) ?? {
         login: contributor.login,
         name: contributor.name,
         avatarUrl: contributor.avatarUrl,
@@ -391,7 +395,7 @@ export async function fetchLeaderboard(
       };
       for (const n of issueNumbers) tally.issues.add(n);
       tally.prs += 1;
-      target.set(contributor.login, tally);
+      target.set(key, tally);
     }
   }
 
@@ -409,8 +413,11 @@ export async function fetchLeaderboard(
     closedInWindow.add(issueNumber);
     for (const login of logins) {
       if (isBotLogin(login)) continue;
-      const target = coreSet.has(login.toLowerCase()) ? coreByLogin : byLogin;
-      const tally = target.get(login) ?? {
+      // Same case-insensitive keying: a marker "@norbiros" merges into the PR's
+      // "Norbiros" tally instead of creating a second row.
+      const key = login.toLowerCase();
+      const target = coreSet.has(key) ? coreByLogin : byLogin;
+      const tally = target.get(key) ?? {
         login,
         name: null,
         avatarUrl: `https://github.com/${login}.png?size=80`,
@@ -418,7 +425,7 @@ export async function fetchLeaderboard(
         prs: 0,
       };
       tally.issues.add(issueNumber);
-      target.set(login, tally);
+      target.set(key, tally);
     }
   }
 

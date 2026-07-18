@@ -13,15 +13,18 @@ export function applyCredits(
   credits: ManualCredit[],
   alreadyClosed: Set<number> = new Set(),
 ): LeaderboardEntry[] {
-  const byLogin = new Map(entries.map((e) => [e.login, { ...e }]));
+  // Keyed by lowercased login so a manual credit for "norbiros" merges into an
+  // existing "Norbiros" entry instead of splitting the person in two.
+  const byLogin = new Map(entries.map((e) => [e.login.toLowerCase(), { ...e }]));
 
   for (const credit of credits) {
     if (credit.issueNumber && alreadyClosed.has(credit.issueNumber)) continue;
-    const existing = byLogin.get(credit.login);
+    const key = credit.login.toLowerCase();
+    const existing = byLogin.get(key);
     if (existing) {
       existing.manualCredits += credit.amount;
     } else {
-      byLogin.set(credit.login, {
+      byLogin.set(key, {
         login: credit.login,
         name: null,
         avatarUrl: `https://github.com/${credit.login}.png?size=80`,
