@@ -109,6 +109,7 @@ const AUTHOR_QUERY = `
 const USER_NAME_QUERY = `
   query ($login: String!) {
     user(login: $login) {
+      login
       name
       avatarUrl
     }
