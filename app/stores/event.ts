@@ -1,4 +1,5 @@
 import type {
+  ContributionIds,
   EventConfig,
   EventPhase,
   EventStats,
@@ -22,6 +23,7 @@ export const useEventStore = defineStore("event", () => {
   const stats = ref<EventStats | null>(null);
   const fetchedAt = ref<string | null>(null);
   const leaderboardLoaded = ref(false);
+  const contributions = ref<ContributionIds>({});
 
   async function load() {
     // Already hydrated from the SSR payload -> skip the client refetch.
@@ -41,10 +43,12 @@ export const useEventStore = defineStore("event", () => {
     const res = await $fetch<{
       entries: LeaderboardEntry[];
       stats: EventStats;
+      contributions: ContributionIds;
       fetchedAt: string;
     }>("/api/leaderboard", { query: { t: Date.now() } });
     leaderboard.value = res.entries;
     stats.value = res.stats;
+    contributions.value = res.contributions ?? {};
     fetchedAt.value = res.fetchedAt;
     leaderboardLoaded.value = true;
   }
@@ -57,6 +61,7 @@ export const useEventStore = defineStore("event", () => {
     leaderboard,
     stats,
     fetchedAt,
+    contributions,
     load,
     loadLeaderboard,
   };

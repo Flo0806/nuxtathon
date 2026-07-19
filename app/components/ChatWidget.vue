@@ -123,7 +123,11 @@ watch(open, (v) => v && scrollToBottom());
           >
             clear
           </button>
-          <button class="text-muted transition-colors hover:text-fg" aria-label="Close" @click="open = false">
+          <button
+            class="text-muted transition-colors hover:text-fg"
+            aria-label="Close"
+            @click="open = false"
+          >
             <span class="i-ph-x block" aria-hidden="true" />
           </button>
         </div>

@@ -30,6 +30,11 @@ export interface EventConfig {
 // Coarse lifecycle that drives what the public site shows.
 export type EventPhase = "upcoming" | "live" | "evaluating" | "results";
 
+// Per-login GitHub issue/pr ids a user is credited with.
+export interface ContributionIds {
+  [login: string]: { issues: number[]; prs: number[] };
+}
+
 export interface LeaderboardEntry {
   login: string;
   name: string | null;
@@ -79,6 +84,7 @@ export interface FinalResult {
   stats: EventStats;
   standings: LeaderboardEntry[];
   coreTeam: LeaderboardEntry[];
+  contributions: ContributionIds;
 }
 
 // Mutable, admin-writable state. Snapshots live under a separate storage key
@@ -90,4 +96,5 @@ export interface RuntimeState {
   final: FinalResult | null;
   // Past finalized events, retained across resets.
   archive: FinalResult[];
+  contributions: ContributionIds | null;
 }

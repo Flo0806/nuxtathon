@@ -29,6 +29,7 @@ export default defineCachedEventHandler(
         entries: state.final.standings,
         coreTeam: state.final.coreTeam ?? [],
         stats: state.final.stats,
+        contributions: state.final.contributions ?? {},
         fetchedAt: state.final.finalizedAt,
       };
     }
@@ -46,15 +47,29 @@ export default defineCachedEventHandler(
     // remaining manual issue numbers are folded in for the headline count.
     const closed = new Set(result.closedIssues);
     const entries = applyCredits(result.entries, state.credits, closed);
-    for (const c of state.credits) if (c.issueNumber) closed.add(c.issueNumber);
+    const contributions = { ...result.contributions };
+
+    for (const c of state.credits) {
+      if (!c.issueNumber) continue;
+      closed.add(c.issueNumber);
+      const key = c.login.toLowerCase();
+      const existing = entries.find((e) => e.login.toLowerCase() === key);
+      const login = existing?.login ?? c.login;
+      const bucket = (contributions[login] ??= { issues: [], prs: [] });
+      if (!bucket.issues.includes(c.issueNumber)) bucket.issues.push(c.issueNumber);
+    }
+
     const stats = { ...result.stats, issuesClosed: closed.size };
+
+    // Persist contributions so they survive the cache and are reusable later.
+    await writeRuntimeState({ ...state, contributions });
 
     await appendSnapshot(
       entries.map((entry) => entry.login),
       fetchedAt,
     );
 
-    return { entries, coreTeam: result.coreTeam, stats, fetchedAt };
+    return { entries, coreTeam: result.coreTeam, stats, contributions, fetchedAt };
   },
   {
     maxAge: 300,

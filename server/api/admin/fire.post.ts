@@ -15,7 +15,17 @@ export default defineEventHandler(async () => {
   // matches what was on screen.
   const closed = new Set(result.closedIssues);
   const standings = applyCredits(result.entries, state.credits, closed);
-  for (const c of state.credits) if (c.issueNumber) closed.add(c.issueNumber);
+  const contributions = { ...result.contributions };
+
+  for (const c of state.credits) {
+    if (!c.issueNumber) continue;
+    closed.add(c.issueNumber);
+    const key = c.login.toLowerCase();
+    const existing = standings.find((e) => e.login.toLowerCase() === key);
+    const login = existing?.login ?? c.login;
+    const bucket = (contributions[login] ??= { issues: [], prs: [] });
+    if (!bucket.issues.includes(c.issueNumber)) bucket.issues.push(c.issueNumber);
+  }
 
   const final: FinalResult = {
     finalizedAt: new Date().toISOString(),
@@ -25,6 +35,7 @@ export default defineEventHandler(async () => {
     stats: { ...result.stats, issuesClosed: closed.size },
     standings,
     coreTeam: result.coreTeam,
+    contributions,
   };
 
   // Upsert by (title, startsAt) so re-firing the same event does not duplicate.
@@ -33,7 +44,7 @@ export default defineEventHandler(async () => {
   );
   archive.push(final);
 
-  await writeRuntimeState({ ...state, final, prizesReleased: true, archive });
+  await writeRuntimeState({ ...state, final, contributions, prizesReleased: true, archive });
   await invalidateLeaderboardCache();
 
   return { finalizedAt: final.finalizedAt, winner: final.standings[0]?.login ?? null };

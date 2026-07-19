@@ -129,7 +129,8 @@ async function saveCredits() {
 // avatar request is not fired for every keystroke in a login field.
 const preview = computed(() => (board.value?.entries ?? []).filter((e) => e.score > 0));
 
-const addCredit = () => credits.value.push({ login: "", amount: 1, note: "", issueNumber: undefined });
+const addCredit = () =>
+  credits.value.push({ login: "", amount: 1, note: "", issueNumber: undefined });
 const removeCredit = (i: number) => credits.value.splice(i, 1);
 
 function downloadJson(filename: string, data: unknown) {
@@ -270,7 +271,9 @@ onMounted(async () => {
             placeholder="issue #"
             aria-label="issue number (optional)"
             class="input w-28"
-            :class="{ '!border-red-500 text-red-400': c.issueNumber && invalidIssues.has(c.issueNumber) }"
+            :class="{
+              '!border-red-500 text-red-400': c.issueNumber && invalidIssues.has(c.issueNumber),
+            }"
             @input="invalidIssues.clear()"
           />
           <input
@@ -290,7 +293,7 @@ onMounted(async () => {
         <h2 class="font-mono text-sm uppercase tracking-wider text-fg">
           Standings <span class="text-muted">(saved)</span>
         </h2>
-        <LeaderboardBoard :entries="preview" />
+        <LeaderboardList :entries="preview" :contributions="board?.contributions" />
       </section>
 
       <section v-if="board?.coreTeam?.length" class="flex flex-col gap-3">

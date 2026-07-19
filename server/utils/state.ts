@@ -9,6 +9,7 @@ const DEFAULT_STATE: RuntimeState = {
   credits: [],
   final: null,
   archive: [],
+  contributions: null,
 };
 
 // Reads merge over defaults so a cold, empty store just works.
