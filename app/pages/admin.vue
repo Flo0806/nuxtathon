@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { FinalResult, LeaderboardEntry, ManualCredit } from "#shared/types/event";
+import type { ContributionIds, FinalResult, LeaderboardEntry, ManualCredit } from "#shared/types/event";
 
 interface Overview {
   phase: string;
@@ -12,6 +12,7 @@ interface Overview {
 interface Board {
   entries: LeaderboardEntry[];
   coreTeam: LeaderboardEntry[];
+  contributions: ContributionIds;
 }
 
 const toast = useToast();
