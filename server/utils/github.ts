@@ -1,4 +1,9 @@
-import type { EventConfig, EventStats, LeaderboardEntry } from "#shared/types/event";
+import type {
+  ContributionIds,
+  EventConfig,
+  EventStats,
+  LeaderboardEntry,
+} from "#shared/types/event";
 
 interface PrAuthor {
   __typename: string;
@@ -100,6 +105,28 @@ const AUTHOR_QUERY = `
     }
   }
 `;
+
+const USER_NAME_QUERY = `
+  query ($login: String!) {
+    user(login: $login) {
+      login
+      name
+      avatarUrl
+    }
+  }
+`;
+
+// Back-fill the display name + avatar from GitHub. Returns nulls on failure.
+async function fetchUserName(token: string, login: string): Promise<ContributorUser | null> {
+  try {
+    const { user } = (await graphql(token, USER_NAME_QUERY, { login })) as {
+      user: ContributorUser | null;
+    };
+    return user;
+  } catch {
+    return null;
+  }
+}
 
 async function graphql(token: string, query: string, variables: object): Promise<unknown> {
   const res = await $fetch<{ data?: unknown; errors?: unknown }>(GITHUB_GRAPHQL, {
@@ -296,7 +323,7 @@ interface Tally {
   name: string | null;
   avatarUrl: string;
   issues: Set<number>;
-  prs: number;
+  prs: Set<number>;
 }
 
 // Everyone who worked on a PR: its linked commit authors (which include
@@ -323,7 +350,7 @@ function toEntry(tally: Tally): LeaderboardEntry {
     name: tally.name,
     avatarUrl: tally.avatarUrl,
     closedIssues: tally.issues.size,
-    mergedPRs: tally.prs,
+    mergedPRs: tally.prs.size,
     manualCredits: 0,
     score: tally.issues.size,
     rank: 0,
@@ -354,6 +381,8 @@ export async function fetchLeaderboard(
   // Issue numbers closed by event PRs, exposed so the endpoint can dedup manual
   // credits against them before counting.
   closedIssues: number[];
+  // Per-login credited issue/PR numbers (deep-linking + reuse).
+  contributions: ContributionIds;
 }> {
   const from = window?.from ?? config.startsAt;
   const to = window?.to ?? config.endsAt;
@@ -391,10 +420,10 @@ export async function fetchLeaderboard(
         name: contributor.name,
         avatarUrl: contributor.avatarUrl,
         issues: new Set<number>(),
-        prs: 0,
+        prs: new Set<number>(),
       };
       for (const n of issueNumbers) tally.issues.add(n);
-      tally.prs += 1;
+      tally.prs.add(pr.number);
       target.set(key, tally);
     }
   }
@@ -408,6 +437,9 @@ export async function fetchLeaderboard(
       ? await fetchMarkerCredits(token, from, to, config.closeMarker, markerAuthors)
       : [];
 
+  // Marker-credited logins (which carry no name) awaiting a GitHub lookup.
+  const missingNames = new Map<string, Tally>();
+
   for (const { issueNumber, logins } of markers) {
     if (closedInWindow.has(issueNumber)) continue;
     closedInWindow.add(issueNumber);
@@ -417,15 +449,34 @@ export async function fetchLeaderboard(
       // "Norbiros" tally instead of creating a second row.
       const key = login.toLowerCase();
       const target = coreSet.has(key) ? coreByLogin : byLogin;
+      const isNew = !target.has(key);
       const tally = target.get(key) ?? {
         login,
         name: null,
         avatarUrl: `https://github.com/${login}.png?size=80`,
         issues: new Set<number>(),
-        prs: 0,
+        prs: new Set<number>(),
       };
       tally.issues.add(issueNumber);
       target.set(key, tally);
+      // Marker credits start with a name-less tally; back-fill the display name + avatar from GitHub.
+      if (isNew) missingNames.set(key, tally);
+    }
+  }
+
+  // Back-fill display names + avatars for marker-only contributors in one batch.
+  if (missingNames.size > 0) {
+    const resolved = await Promise.all(
+      [...missingNames.keys()].map(async (key) => {
+        const info = await fetchUserName(token, missingNames.get(key)!.login);
+        return [key, info] as const;
+      }),
+    );
+    for (const [key, info] of resolved) {
+      if (!info) continue;
+      const tally = missingNames.get(key)!;
+      tally.name = info.name;
+      tally.avatarUrl = info.avatarUrl;
     }
   }
 
@@ -439,10 +490,21 @@ export async function fetchLeaderboard(
     `${REPO} is:pr created:${toGithubStamp(from)}..${toGithubStamp(to)}`,
   );
 
+  const contributions: Record<string, { issues: number[]; prs: number[] }> = {};
+  for (const m of [byLogin, coreByLogin]) {
+    for (const tally of m.values()) {
+      contributions[tally.login] = {
+        issues: [...tally.issues],
+        prs: [...tally.prs],
+      };
+    }
+  }
+
   return {
     entries,
     coreTeam,
     stats: { submitted, merged, issuesClosed },
     closedIssues: [...closedInWindow],
+    contributions,
   };
 }

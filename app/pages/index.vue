@@ -115,7 +115,12 @@ const dateRange = computed(() => {
 
       <section v-if="showLeaderboard" class="mx-auto flex w-full max-w-[42rem] flex-col gap-4">
         <LeaderboardStats :stats="store.stats" />
-        <LeaderboardBoard v-if="store.leaderboard.length" :entries="store.leaderboard" />
+        <LeaderboardList
+          v-if="store.leaderboard.length"
+          :entries="store.leaderboard"
+          :contributions="store.contributions"
+        />
+
         <p v-else class="panel px-6 py-10 text-center font-mono text-sm text-muted">
           No issues closed yet. The ranking fills as merged PRs land.
         </p>
