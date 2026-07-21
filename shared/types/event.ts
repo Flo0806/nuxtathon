@@ -96,5 +96,4 @@ export interface RuntimeState {
   final: FinalResult | null;
   // Past finalized events, retained across resets.
   archive: FinalResult[];
-  contributions: ContributionIds | null;
 }

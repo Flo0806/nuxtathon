@@ -61,11 +61,6 @@ export default defineCachedEventHandler(
 
     const stats = { ...result.stats, issuesClosed: closed.size };
 
-    // Persist contributions so they survive the cache and are reusable later.
-    // Re-read state in case something has changed between the initial read and now.
-    const currentState = await readRuntimeState();
-    await writeRuntimeState({ ...currentState, contributions });
-
     await appendSnapshot(
       entries.map((entry) => entry.login),
       fetchedAt,

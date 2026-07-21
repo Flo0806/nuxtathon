@@ -44,7 +44,7 @@ export default defineEventHandler(async () => {
   );
   archive.push(final);
 
-  await writeRuntimeState({ ...state, final, contributions, prizesReleased: true, archive });
+  await writeRuntimeState({ ...state, final, prizesReleased: true, archive });
   await invalidateLeaderboardCache();
 
   return { finalizedAt: final.finalizedAt, winner: final.standings[0]?.login ?? null };
