@@ -132,6 +132,15 @@ backup of `.data/state/runtime` next to it. Deploy and let it start **before**
 touching Settings or `config/event.json`, since the migration takes the
 committed config as the one the archived event ran with.
 
+## Social preview
+
+`/og.png` is rendered on the server from the resolved config (eyebrow, title,
+event window) with `@resvg/resvg-js` and cached per text variant; the page
+links it as `/og.png?v=<hash>` so unfurlers refetch after a settings change.
+Fonts (Chakra Petch, JetBrains Mono, both OFL) live in `server/assets/fonts`
+and are written to `.data/fonts` on first use. `public/og-fallback.png` is
+served if rendering fails.
+
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md).

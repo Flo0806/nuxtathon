@@ -14,5 +14,7 @@ export default defineEventHandler(async () => {
     phase,
     prizesReleased: state.prizesReleased,
     snapshots,
+    // Versions the /og.png URL so link unfurlers refetch after a text change.
+    ogVersion: ogHash(ogTextFor(config, phase)),
   };
 });
