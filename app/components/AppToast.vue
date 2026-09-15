@@ -3,7 +3,7 @@ const { toasts } = useToast();
 </script>
 
 <template>
-  <div class="pointer-events-none fixed bottom-5 right-5 z-50 flex flex-col items-end gap-2">
+  <div class="pointer-events-none fixed bottom-5 right-5 z-110 flex flex-col items-end gap-2">
     <TransitionGroup
       enter-active-class="transition-all duration-300 ease-out"
       enter-from-class="opacity-0 translate-y-2"

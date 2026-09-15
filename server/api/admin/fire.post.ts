@@ -8,7 +8,8 @@ export default defineEventHandler(async () => {
   }
 
   const state = await readRuntimeState();
-  const result = await fetchLeaderboard(eventConfig, token);
+  const config = await resolveEventConfig();
+  const result = await fetchLeaderboard(config, token);
 
   // Same order as the live endpoint: dedup manual credits against PR/marker closes
   // first, then fold the remaining manual issue numbers into the frozen count so it
@@ -29,9 +30,9 @@ export default defineEventHandler(async () => {
 
   const final: FinalResult = {
     finalizedAt: new Date().toISOString(),
-    title: eventConfig.title,
-    startsAt: eventConfig.startsAt,
-    endsAt: eventConfig.endsAt,
+    title: config.title,
+    startsAt: config.startsAt,
+    endsAt: config.endsAt,
     stats: { ...result.stats, issuesClosed: closed.size },
     standings,
     coreTeam: result.coreTeam,

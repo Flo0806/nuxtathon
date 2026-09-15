@@ -22,7 +22,7 @@
       </a>
     </p>
     <NuxtLink
-      to="/admin"
+      to="/admin/nuxtathon"
       class="font-mono text-[0.62rem] uppercase tracking-[0.2em] text-faint transition-colors hover:text-muted"
     >
       Admin

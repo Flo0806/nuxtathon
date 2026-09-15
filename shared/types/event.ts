@@ -27,6 +27,17 @@ export interface EventConfig {
   displayTimeZone: string;
 }
 
+// Content keys the admin may override at runtime. Deliberately excludes the
+// scoring fields (window, cutoff, core team, marker), which stay committed until
+// they get their own guarded UI. Add a key here to make it editable.
+export const SETTINGS_KEYS = ["title", "eyebrow", "description", "rules"] as const;
+export type SettingsKey = (typeof SETTINGS_KEYS)[number];
+
+// Sparse overrides stored under their own storage key. Missing = use the default
+// from config/event.json, so a field is "reset" by deleting it, not by copying
+// the default back.
+export type EventSettings = Partial<Pick<EventConfig, SettingsKey>>;
+
 // Coarse lifecycle that drives what the public site shows.
 export type EventPhase = "upcoming" | "live" | "evaluating" | "results";
 
