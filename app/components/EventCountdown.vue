@@ -53,16 +53,10 @@ const units = ["days", "hrs", "min", "sec"];
         {{ label }}
       </p>
       <ClientOnly>
-        <div class="flex gap-[0.6rem]">
-          <div
-            v-for="s in slots"
-            :key="s.unit"
-            class="panel flex flex-col items-center gap-[0.35rem] min-w-[clamp(3.4rem,9vw,5.2rem)] px-[0.5rem] pt-[0.7rem] pb-[0.55rem]"
-          >
-            <span
-              class="glow font-mono font-extrabold leading-none tabular-nums text-[clamp(1.7rem,5.5vw,3rem)]"
-            >
-              {{ s.value }}
+        <div class="flex gap-[clamp(0.6rem,2vw,1.1rem)]">
+          <div v-for="s in slots" :key="s.unit" class="flex flex-col items-center gap-[0.45rem]">
+            <span class="flex gap-[3px]" role="img" :aria-label="`${s.value} ${s.unit}`">
+              <FlipDigit v-for="(d, i) in s.value.split('')" :key="i" :value="d" />
             </span>
             <span class="font-mono text-[0.6rem] tracking-[0.2em] uppercase text-muted">{{
               s.unit
@@ -70,16 +64,11 @@ const units = ["days", "hrs", "min", "sec"];
           </div>
         </div>
         <template #fallback>
-          <div class="flex gap-[0.6rem]">
-            <div
-              v-for="u in units"
-              :key="u"
-              class="panel flex flex-col items-center gap-[0.35rem] min-w-[clamp(3.4rem,9vw,5.2rem)] px-[0.5rem] pt-[0.7rem] pb-[0.55rem]"
-            >
-              <span
-                class="glow font-mono font-extrabold leading-none tabular-nums text-[clamp(1.7rem,5.5vw,3rem)]"
-              >
-                --
+          <div class="flex gap-[clamp(0.6rem,2vw,1.1rem)]">
+            <div v-for="u in units" :key="u" class="flex flex-col items-center gap-[0.45rem]">
+              <span class="flex gap-[3px]">
+                <FlipDigit value="-" />
+                <FlipDigit value="-" />
               </span>
               <span class="font-mono text-[0.6rem] tracking-[0.2em] uppercase text-muted">{{
                 u
