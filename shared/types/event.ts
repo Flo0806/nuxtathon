@@ -92,6 +92,11 @@ export interface FinalResult {
   title: string;
   startsAt: string;
   endsAt: string;
+  // Full config the event ran with, so an archived result renders its own texts,
+  // rules and core team no matter what is configured for later events. Optional
+  // only because results fired before this field existed get it backfilled by
+  // the startup migration (server/plugins/migrate.ts).
+  config?: EventConfig;
   stats: EventStats;
   standings: LeaderboardEntry[];
   coreTeam: LeaderboardEntry[];

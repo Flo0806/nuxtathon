@@ -33,6 +33,7 @@ export default defineEventHandler(async () => {
     title: config.title,
     startsAt: config.startsAt,
     endsAt: config.endsAt,
+    config,
     stats: { ...result.stats, issuesClosed: closed.size },
     standings,
     coreTeam: result.coreTeam,

@@ -4,7 +4,9 @@
 export default defineEventHandler(async () => {
   const state = await readRuntimeState();
   const snapshots = await readSnapshots();
-  const config = await resolveEventConfig();
+  // A fired event is served with the config it ran with, so the results page
+  // stays intact even once the admin starts preparing the next event.
+  const config = state.final?.config ?? (await resolveEventConfig());
   const phase = resolvePhase(config, state.prizesReleased);
 
   return {
