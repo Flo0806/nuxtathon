@@ -1,9 +1,5 @@
 <script setup lang="ts">
-// Shared admin chrome: tab navigation, login gate, and the login dialog. Pages
-// under /admin only render once a session exists, so their onMounted can load
-// data straight away with auth.authHeaders(). A 401 later on (see
-// useAdminAuth.handle401) clears the session, which unmounts the page and brings
-// the dialog back.
+// Tabs and login dialog. Pages gate themselves via useAdminPage.
 const TABS = [
   { to: "/admin/nuxtathon", label: "Event", icon: "i-ph-lightning" },
   { to: "/admin/settings", label: "Settings", icon: "i-ph-sliders-horizontal" },
@@ -12,8 +8,7 @@ const TABS = [
 const auth = useAdminAuth();
 const toast = useToast();
 
-// The token lives in sessionStorage, so SSR always renders logged-out. Gate on
-// mount to avoid a hydration mismatch.
+// Token is client-only (sessionStorage); gate on mount to avoid a hydration mismatch.
 const ready = ref(false);
 onMounted(() => (ready.value = true));
 
@@ -25,7 +20,7 @@ const loggingIn = ref(false);
 async function submitLogin() {
   loggingIn.value = true;
   try {
-    // Any admin endpoint verifies the credentials; overview is the cheapest.
+    // Cheapest authed endpoint to verify the credentials.
     const token = btoa(`${loginUser.value}:${loginPass.value}`);
     await $fetch("/api/admin/overview", { headers: { authorization: `Basic ${token}` } });
     auth.set(loginUser.value, loginPass.value);
@@ -52,7 +47,7 @@ async function submitLogin() {
             Back
           </NuxtLink>
           <h1 class="font-display text-2xl font-bold uppercase tracking-wider text-mint">Admin</h1>
-          <button v-if="auth.isAuthed.value" class="btn ml-auto" @click="auth.clear()">
+          <button v-if="ready && auth.isAuthed.value" class="btn ml-auto" @click="auth.clear()">
             <span class="i-ph-sign-out" aria-hidden="true" />
             Log out
           </button>
@@ -71,7 +66,7 @@ async function submitLogin() {
           </NuxtLink>
         </nav>
 
-        <slot v-if="ready && auth.isAuthed.value" />
+        <slot />
       </main>
       <AppFooter />
     </div>

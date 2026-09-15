@@ -5,6 +5,7 @@ import type {
   LeaderboardEntry,
   ManualCredit,
 } from "#shared/types/event";
+import { earliestStart, validateWindow } from "#shared/utils/event-window";
 
 definePageMeta({ layout: "admin" });
 
@@ -126,28 +127,64 @@ async function fire() {
   });
   if (ok) act("/api/admin/fire", "Fired - winner is live");
 }
-async function reset() {
-  const ok = await confirm({
-    title: "Reset event",
-    message:
-      "Clear the live event to start a new Nuxtathon? The finalized result stays in the archive.",
-    confirmLabel: "Reset",
-  });
-  if (ok) act("/api/admin/reset", "Reset - ready for a new event");
+// Start new: archive the fired event, open the next one. Dates are UTC.
+const showStart = ref(false);
+const start = reactive({ eyebrow: "", title: "", startsAt: "", endsAt: "", qualifyingBefore: "" });
+const toLocal = (ms: number) => new Date(ms).toISOString().slice(0, 16);
+const toIso = (local: string) => (local ? `${local}:00.000Z` : "");
+const DAY = 24 * 60 * 60 * 1000;
+
+const startWindow = computed(() => ({
+  startsAt: toIso(start.startsAt),
+  endsAt: toIso(start.endsAt),
+  qualifyingBefore: toIso(start.qualifyingBefore),
+}));
+// Errors only after blur/submit so the prefilled dialog does not open red.
+const touched = reactive({ startsAt: false, endsAt: false, qualifyingBefore: false });
+const startErrors = computed(() => validateWindow(startWindow.value));
+const startValid = computed(() => Object.keys(startErrors.value).length === 0);
+const shownError = (key: keyof typeof touched) =>
+  touched[key] ? startErrors.value[key] : undefined;
+
+// Prefill mirrors event #1: next UTC day, two days, cutoff four days earlier.
+function openStart() {
+  const s = earliestStart();
+  start.eyebrow = "";
+  start.title = "";
+  start.startsAt = toLocal(s);
+  start.endsAt = toLocal(s + 2 * DAY - 60 * 1000);
+  start.qualifyingBefore = toLocal(s - 4 * DAY);
+  touched.startsAt = touched.endsAt = touched.qualifyingBefore = false;
+  showStart.value = true;
 }
 
-// The admin layout only mounts this page with a session in place.
-onMounted(async () => {
+async function submitStart() {
+  touched.startsAt = touched.endsAt = touched.qualifyingBefore = true;
+  if (!startValid.value) return;
+  busy.value = true;
   try {
+    await $fetch("/api/admin/start", {
+      method: "POST",
+      headers: auth.authHeaders(),
+      body: {
+        settings: { eyebrow: start.eyebrow, title: start.title, ...startWindow.value },
+      },
+    });
+    showStart.value = false;
+    toast.success("New event opened - upcoming");
     await loadAll();
   } catch (e) {
     if (!auth.handle401(e)) toast.error(errMsg(e));
+  } finally {
+    busy.value = false;
   }
-});
+}
+
+const { visible } = useAdminPage(loadAll);
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
+  <div v-if="visible" class="flex flex-col gap-6">
     <span
       v-if="loading || busy"
       class="i-ph-spinner animate-spin text-base text-primary"
@@ -196,10 +233,10 @@ onMounted(async () => {
           v-if="overview.finalized"
           class="btn text-amber hover:border-amber"
           :disabled="busy"
-          @click="reset"
+          @click="openStart"
         >
-          <span class="i-ph-trash" aria-hidden="true" />
-          Reset
+          <span class="i-ph-rocket-launch" aria-hidden="true" />
+          Start new
         </button>
       </div>
 
@@ -298,5 +335,57 @@ onMounted(async () => {
         </div>
       </section>
     </template>
+
+    <AppDialog v-model="showStart" title="Start a new event">
+      <form class="flex flex-col gap-3" novalidate @submit.prevent="submitStart">
+        <p class="font-mono text-[0.72rem] leading-relaxed text-muted">
+          The current result stays in the archive. The site switches to "upcoming" with this window;
+          everything below stays editable in Settings until the start.
+        </p>
+        <input
+          v-model="start.eyebrow"
+          placeholder="eyebrow, e.g. #2 · Community Hackathon"
+          class="input"
+        />
+        <input v-model="start.title" placeholder="title (empty = keep)" class="input" />
+
+        <label
+          v-for="f in [
+            { key: 'startsAt', label: 'Start (UTC)' },
+            { key: 'endsAt', label: 'End (UTC)' },
+            { key: 'qualifyingBefore', label: 'Issues must be created before (UTC)' },
+          ] as const"
+          :key="f.key"
+          class="flex flex-col gap-1 font-mono text-[0.72rem] uppercase tracking-wider text-muted"
+        >
+          {{ f.label }}
+          <input
+            v-model="start[f.key]"
+            type="datetime-local"
+            class="input"
+            :class="{ '!border-red-500': shownError(f.key) }"
+            :aria-invalid="Boolean(shownError(f.key))"
+            @blur="touched[f.key] = true"
+          />
+          <span v-if="shownError(f.key)" class="normal-case tracking-normal text-red-400">
+            {{ shownError(f.key) }}
+          </span>
+        </label>
+
+        <div class="mt-1 flex justify-end gap-2">
+          <button type="button" class="btn" :disabled="busy" @click="showStart = false">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="btn text-amber hover:border-amber"
+            :disabled="busy || !startValid"
+          >
+            <span class="i-ph-rocket-launch" aria-hidden="true" />
+            Start new
+          </button>
+        </div>
+      </form>
+    </AppDialog>
   </div>
 </template>

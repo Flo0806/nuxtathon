@@ -128,12 +128,23 @@ async function fetchUserName(token: string, login: string): Promise<ContributorU
   }
 }
 
+// Never pass GitHub's status through: a 401 here is a bad token, and the admin
+// client would read it as an expired admin session.
+async function post<T>(token: string, query: string, variables: object): Promise<T> {
+  try {
+    return await $fetch<T>(GITHUB_GRAPHQL, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "user-agent": "nuxtathon-leaderboard" },
+      body: { query, variables },
+    });
+  } catch (e) {
+    const status = (e as { statusCode?: number }).statusCode;
+    throw createError({ statusCode: 502, statusMessage: `GitHub responded ${status ?? "error"}` });
+  }
+}
+
 async function graphql(token: string, query: string, variables: object): Promise<unknown> {
-  const res = await $fetch<{ data?: unknown; errors?: unknown }>(GITHUB_GRAPHQL, {
-    method: "POST",
-    headers: { authorization: `Bearer ${token}`, "user-agent": "nuxtathon-leaderboard" },
-    body: { query, variables },
-  });
+  const res = await post<{ data?: unknown; errors?: unknown }>(token, query, variables);
   if (res.errors || !res.data) {
     throw createError({ statusCode: 502, statusMessage: "GitHub GraphQL error", data: res.errors });
   }
@@ -156,13 +167,9 @@ export async function validateIssues(
 
   const fields = unique.map((n) => `i${n}: issue(number: ${n}) { number }`).join("\n");
   const query = `query { repository(owner: "nuxt", name: "nuxt") { ${fields} } }`;
-  const res = await $fetch<{
+  const res = await post<{
     data?: { repository?: Record<string, { number: number } | null> | null };
-  }>(GITHUB_GRAPHQL, {
-    method: "POST",
-    headers: { authorization: `Bearer ${token}`, "user-agent": "nuxtathon-leaderboard" },
-    body: { query, variables: {} },
-  });
+  }>(token, query, {});
   const repo = res?.data?.repository ?? null;
 
   const valid: number[] = [];

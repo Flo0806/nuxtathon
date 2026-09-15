@@ -1,9 +1,12 @@
-import type { EventConfig, EventSettings } from "#shared/types/event";
-import { SETTINGS_KEYS } from "#shared/types/event";
+import type { EventConfig, EventSettings, SettingsKey } from "#shared/types/event";
+import { ORGANIZER_LOGIN, SETTINGS_KEYS } from "#shared/types/event";
+import type { EventWindow } from "#shared/utils/event-window";
+import { lockedSettingsKeys, validateWindow } from "#shared/utils/event-window";
 
-// Own storage key, separate from RuntimeState, so fire/reset/unfreeze can never
-// touch content settings and a settings save can never race an event write.
+// Separate key from RuntimeState so event writes and settings writes never race.
 const SETTINGS_KEY = "settings";
+
+const DATE_KEYS: ReadonlySet<SettingsKey> = new Set(["startsAt", "endsAt", "qualifyingBefore"]);
 
 export async function readSettings(): Promise<EventSettings> {
   const stored = await useStorage("state").getItem<EventSettings>(SETTINGS_KEY);
@@ -14,24 +17,52 @@ export async function writeSettings(next: EventSettings): Promise<void> {
   await useStorage("state").setItem(SETTINGS_KEY, pickSettings(next));
 }
 
-// Committed defaults with the stored overrides on top. Everything that renders
-// or archives config should go through this, not eventConfig directly.
+// Defaults + overrides. Use this, not eventConfig, wherever config is consumed.
+// The organizer is pinned into both login lists so a settings edit can neither
+// rank them nor drop their marker comments.
 export async function resolveEventConfig(): Promise<EventConfig> {
-  return { ...eventConfig, ...(await readSettings()) };
+  const merged = { ...eventConfig, ...(await readSettings()) };
+  return {
+    ...merged,
+    coreTeam: withOrganizer(merged.coreTeam),
+    markerAuthors: withOrganizer(merged.markerAuthors),
+  };
 }
 
-// Keep only known keys that actually differ from the default. Empty string /
-// empty array means "back to default", and a value identical to the default is
-// dropped too, so the stored file only ever holds real overrides.
-function pickSettings(input: EventSettings): EventSettings {
+function withOrganizer(logins: string[]): string[] {
+  const rest = logins.filter((l) => l.toLowerCase() !== ORGANIZER_LOGIN);
+  return [ORGANIZER_LOGIN, ...rest];
+}
+
+// Lock state for the settings form and the PUT handler.
+export async function settingsLock(): Promise<{ frozen: boolean; locked: string[] }> {
+  const state = await readRuntimeState();
+  const frozen = Boolean(state.final);
+  const phase = resolvePhase(await resolveEventConfig(), state.prizesReleased);
+  return { frozen, locked: lockedSettingsKeys(phase, frozen) };
+}
+
+// First violation as 422; the forms show the same rules inline.
+export function assertWindow(w: EventWindow, locked: readonly string[] = []) {
+  const first = Object.values(validateWindow(w, locked))[0];
+  if (first) throw createError({ statusCode: 422, statusMessage: first });
+}
+
+// Only real overrides are stored: empty or equal-to-default values are dropped.
+export function pickSettings(input: EventSettings): EventSettings {
   const out: EventSettings = {};
   for (const key of SETTINGS_KEYS) {
     const value = input[key];
-    if (key === "rules") {
-      const rules = Array.isArray(value) ? value.map((r) => String(r).trim()).filter(Boolean) : [];
-      if (rules.length && rules.join("\n") !== eventConfig.rules.join("\n")) out.rules = rules;
-    } else if (typeof value === "string" && value.trim() && value.trim() !== eventConfig[key]) {
-      out[key] = value.trim();
+    const fallback = eventConfig[key];
+    if (Array.isArray(fallback)) {
+      const list = Array.isArray(value) ? value.map((v) => String(v).trim()).filter(Boolean) : [];
+      if (list.length && list.join("\n") !== fallback.join("\n")) {
+        (out as Record<string, unknown>)[key] = list;
+      }
+    } else if (typeof value === "string" && value.trim() && value.trim() !== fallback) {
+      const v = value.trim();
+      if (DATE_KEYS.has(key) && Number.isNaN(Date.parse(v))) continue;
+      (out as Record<string, unknown>)[key] = v;
     }
   }
   return out;

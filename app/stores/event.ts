@@ -26,8 +26,9 @@ export const useEventStore = defineStore("event", () => {
   const contributions = ref<ContributionIds>({});
 
   async function load() {
-    // Already hydrated from the SSR payload -> skip the client refetch.
-    if (config.value) return;
+    // Skip only the refetch right after SSR hydration. Later client-side visits
+    // (e.g. back from the admin) must re-read, or settings edits never show.
+    if (config.value && import.meta.client && useNuxtApp().isHydrating) return;
 
     const data = await $fetch<StatePayload>("/api/state");
     config.value = data.config;
