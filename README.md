@@ -69,7 +69,8 @@ pnpm dev
 ```
 
 Lint and format with `pnpm lint` and `pnpm fmt`. Runtime state (frozen result,
-credits, snapshots, cache) is written to `.data` via the filesystem driver.
+credits, snapshots, settings, cache) is written to `.data` via the filesystem
+driver.
 
 ## Event lifecycle
 
@@ -87,35 +88,49 @@ reload.
 
 ## Admin
 
-Visit `/admin` and log in with the env credentials. Actions:
+Visit `/admin/nuxtathon` and log in with the env credentials. Actions:
 
 - **Fire**: freeze the ranking, release prizes, archive the result, and reveal
   the winner. This stops the count, so late merges no longer move the board. Use
   it during `evaluating`, or earlier if you must end the event before the clock.
 - **Unfreeze**: undo a fire and go back to the live leaderboard.
 - **Refresh**: drop the cache and recompute from GitHub now.
-- **Reset**: clear the live event (frozen result, credits, snapshots) to make
-  room for a new Nuxtathon. The archived result is kept.
+- **Start new**: close the fired event and open the next one. Asks for the new
+  window (start, end, issue cutoff) and optional title/eyebrow, archives the
+  result, clears credits and snapshots, and switches the site to `upcoming`.
 - **Manual credits**: add points to a contributor for an issue closed without a
   PR, for example a non-reproducible issue you close and credit the reporter. The
   standings preview updates live; Save persists.
 - **Archive**: past finalized events, downloadable as JSON per event or all at
-  once.
+  once. Each entry carries the full config it ran with.
+
+The **Settings** tab overrides `config/event.json` at runtime. Empty fields
+use the committed default. Texts are editable at any time; the event window
+locks progressively: the start and issue cutoff once the event is live, the end
+once it is over, everything once the event is fired. `danielroe` is always part
+of the core team and the marker authors, and the display time zone is fixed to
+UTC.
 
 The admin API uses HTTP Basic Auth with a timing-safe comparison and a per-IP
 failure throttle. Serve the app over HTTPS, since Basic Auth depends on it.
 
 ## Starting a new Nuxtathon
 
-`config/event.json` is part of the build, so a new event means shipping an
-updated build plus a reset:
+No build needed. In `/admin/nuxtathon`, fire the running event if you have not
+yet, then press **Start new** and enter the window. Adjust texts and the rest of
+the window in the Settings tab while the event is `upcoming`. The archive
+persists.
 
-1. Update `config/event.json` (title, dates, `qualifyingBefore`, description).
-2. Optionally download the current archive from `/admin` as a backup.
-3. Deploy the new build.
-4. In `/admin`, press **Reset** to clear the previous event's frozen state.
+`config/event.json` stays the committed default that settings override; edit it
+only for defaults you want in the repo.
 
-The archive persists across the reset.
+### Upgrading a deployment from before v0.6
+
+The first start of the new build runs a one-off migration that copies the
+committed config into every archived result (`FinalResult.config`) and writes a
+backup of `.data/state/runtime` next to it. Deploy and let it start **before**
+touching Settings or `config/event.json`, since the migration takes the
+committed config as the one the archived event ran with.
 
 ## Contributing
 
