@@ -1,6 +1,7 @@
 export default defineEventHandler(async () => {
   const state = await readRuntimeState();
-  const phase = resolvePhase(eventConfig, state.prizesReleased);
+  const config = await resolveEventConfig();
+  const phase = resolvePhase(config, state.prizesReleased);
 
   return {
     phase,

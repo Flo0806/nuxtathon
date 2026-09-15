@@ -1,27 +1,33 @@
 import { createHash } from "node:crypto";
+import type { H3Event } from "h3";
+import type { EventConfig } from "#shared/types/event";
 
-// Cache key from the scoring-relevant config, so any change to the window,
-// cutoff, or core team busts the cache (dev edits and deploys alike).
-const configKey = (): string =>
-  createHash("sha256")
+// Keyed on the scoring-relevant config so any change to it busts the cache. The
+// resolved config is parked on the event so the handler fetches with the exact
+// config the key was built from.
+const configKey = async (event: H3Event): Promise<string> => {
+  const c = await resolveEventConfig();
+  event.context.eventConfig = c;
+  return createHash("sha256")
     .update(
       JSON.stringify([
-        eventConfig.startsAt,
-        eventConfig.endsAt,
-        eventConfig.qualifyingBefore,
-        eventConfig.coreTeam,
-        eventConfig.closeMarker,
-        eventConfig.markerAuthors,
+        c.startsAt,
+        c.endsAt,
+        c.qualifyingBefore,
+        c.coreTeam,
+        c.closeMarker,
+        c.markerAuthors,
       ]),
     )
     .digest("hex")
     .slice(0, 12);
+};
 
 // Cached so N page views cost at most one GitHub fetch per maxAge window. SWR
 // serves stale instantly and revalidates in the background. Once the event is
 // fired, the frozen standings are served and GitHub is never hit again.
 export default defineCachedEventHandler(
-  async () => {
+  async (event) => {
     const state = await readRuntimeState();
 
     if (state.final) {
@@ -39,7 +45,8 @@ export default defineCachedEventHandler(
       throw createError({ statusCode: 400, statusMessage: "NUXT_GITHUB_TOKEN is not set" });
     }
 
-    const result = await fetchLeaderboard(eventConfig, token);
+    const config = (event.context.eventConfig as EventConfig) ?? (await resolveEventConfig());
+    const result = await fetchLeaderboard(config, token);
     const fetchedAt = new Date().toISOString();
 
     // PR + marker closed issues. Passed to applyCredits first (so a manual credit

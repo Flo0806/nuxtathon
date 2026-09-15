@@ -6,6 +6,7 @@
 .cache
 .scripts
 CLAUDE.md
+docs/
 dist
 
 # Node dependencies

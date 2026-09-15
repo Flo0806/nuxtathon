@@ -1,12 +1,16 @@
-// Public state endpoint. Returns the static config plus the current phase and
+// Public state endpoint. Returns the resolved config (defaults + admin overrides),
+// the current phase and
 // the snapshot history the client needs to drive the intro reshuffle.
 export default defineEventHandler(async () => {
   const state = await readRuntimeState();
   const snapshots = await readSnapshots();
-  const phase = resolvePhase(eventConfig, state.prizesReleased);
+  // A fired event is served with the config it ran with, so the results page
+  // stays intact even once the admin starts preparing the next event.
+  const config = state.final?.config ?? (await resolveEventConfig());
+  const phase = resolvePhase(config, state.prizesReleased);
 
   return {
-    config: eventConfig,
+    config,
     phase,
     prizesReleased: state.prizesReleased,
     snapshots,
