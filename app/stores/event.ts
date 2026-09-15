@@ -12,6 +12,7 @@ interface StatePayload {
   phase: EventPhase;
   prizesReleased: boolean;
   snapshots: Snapshot[];
+  ogVersion: string;
 }
 
 export const useEventStore = defineStore("event", () => {
@@ -19,6 +20,7 @@ export const useEventStore = defineStore("event", () => {
   const phase = ref<EventPhase | null>(null);
   const prizesReleased = ref(false);
   const snapshots = ref<Snapshot[]>([]);
+  const ogVersion = ref("");
   const leaderboard = ref<LeaderboardEntry[]>([]);
   const stats = ref<EventStats | null>(null);
   const fetchedAt = ref<string | null>(null);
@@ -26,15 +28,16 @@ export const useEventStore = defineStore("event", () => {
   const contributions = ref<ContributionIds>({});
 
   async function load() {
-    // Skip only the refetch right after SSR hydration. Later client-side visits
-    // (e.g. back from the admin) must re-read, or settings edits never show.
-    if (config.value && import.meta.client && useNuxtApp().isHydrating) return;
+    // Within one SSR request and right after hydration the store is fresh; later
+    // client-side visits (e.g. back from the admin) must re-read.
+    if (config.value && (import.meta.server || useNuxtApp().isHydrating)) return;
 
     const data = await $fetch<StatePayload>("/api/state");
     config.value = data.config;
     phase.value = data.phase;
     prizesReleased.value = data.prizesReleased;
     snapshots.value = data.snapshots;
+    ogVersion.value = data.ogVersion;
   }
 
   // `force` bypasses the hydration guard so the client poll can refresh.
@@ -59,6 +62,7 @@ export const useEventStore = defineStore("event", () => {
     phase,
     prizesReleased,
     snapshots,
+    ogVersion,
     leaderboard,
     stats,
     fetchedAt,

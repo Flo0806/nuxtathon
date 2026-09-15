@@ -1,11 +1,22 @@
 <script setup lang="ts">
-// Site-wide SEO and social tags. `siteUrl` makes the OG/canonical URLs absolute
+// Site-wide SEO and social tags from the resolved event config (a fired event
+// keeps its archived texts). `siteUrl` makes the OG/canonical URLs absolute
 // once NUXT_PUBLIC_SITE_URL is set; without it the image falls back to a path.
 const site = useRuntimeConfig().public.siteUrl || "";
-const ogImage = `${site}/og.png`;
-const title = "Nuxtathon - #1 Nuxt Community Hackathon";
-const description =
-  "Live leaderboard for the first Nuxt community hackathon. Two days, one mission: close as many open nuxt/nuxt issues as we can.";
+const store = useEventStore();
+await store.load();
+
+const plain = (md: string) =>
+  md
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[*_`]/g, "")
+    .trim();
+
+const title = computed(() =>
+  store.config ? `${store.config.title} - ${store.config.eyebrow}` : "Nuxtathon",
+);
+const description = computed(() => (store.config ? plain(store.config.description) : ""));
+const ogImage = computed(() => `${site}/og.png?v=${store.ogVersion}`);
 
 useHead({
   htmlAttrs: { lang: "en" },
@@ -22,7 +33,7 @@ useSeoMeta({
   ogImage,
   ogImageWidth: 1200,
   ogImageHeight: 630,
-  ogImageAlt: "Nuxtathon - #1 Nuxt Community Hackathon",
+  ogImageAlt: title,
   twitterCard: "summary_large_image",
   twitterTitle: title,
   twitterDescription: description,
