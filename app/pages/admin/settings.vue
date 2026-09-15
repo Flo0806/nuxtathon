@@ -3,6 +3,8 @@ import { marked } from "marked";
 import type { EventSettings, SettingsKey } from "#shared/types/event";
 import { SETTINGS_KEYS } from "#shared/types/event";
 
+definePageMeta({ layout: "admin" });
+
 interface Payload {
   defaults: EventSettings;
   settings: EventSettings;
@@ -49,11 +51,6 @@ const form = reactive<Record<SettingsKey, string>>({
 });
 const busy = ref(false);
 const loading = ref(false);
-
-function errMsg(e: unknown): string {
-  const err = e as { data?: { statusMessage?: string; message?: string }; message?: string };
-  return err?.data?.statusMessage || err?.data?.message || err?.message || "Request failed";
-}
 
 function toForm(value: EventSettings[SettingsKey] | undefined): string {
   return Array.isArray(value) ? value.join("\n") : (value ?? "");
@@ -110,42 +107,30 @@ async function save() {
     for (const key of SETTINGS_KEYS) form[key] = toForm(res.settings[key]);
     toast.success("Settings saved");
   } catch (e) {
-    toast.error(errMsg(e));
+    if (!auth.handle401(e)) toast.error(errMsg(e));
   } finally {
     busy.value = false;
   }
 }
 
+// The admin layout only mounts this page with a session in place.
 onMounted(async () => {
-  // Login lives on the event page for now. Bounce there until the dialog is
-  // shared between admin pages.
-  if (!auth.isAuthed.value) {
-    await navigateTo("/admin/nuxtathon");
-    return;
-  }
   try {
     await load();
   } catch (e) {
-    toast.error(errMsg(e));
+    if (!auth.handle401(e)) toast.error(errMsg(e));
   }
 });
 </script>
 
 <template>
-  <main class="mx-auto flex w-full max-w-[46rem] flex-1 flex-col gap-6 px-5 py-10">
-    <NuxtLink to="/admin/nuxtathon" class="btn self-start">
-      <span class="i-ph-arrow-left" aria-hidden="true" />
-      Back
-    </NuxtLink>
-
-    <h1
-      class="flex items-center gap-3 font-display text-2xl font-bold uppercase tracking-wider text-mint"
-    >
-      Settings
-      <span v-if="loading || busy" class="i-ph-spinner animate-spin text-base text-primary" />
-    </h1>
-
+  <div class="flex flex-col gap-6">
     <p class="font-mono text-[0.72rem] leading-relaxed text-muted">
+      <span
+        v-if="loading || busy"
+        class="i-ph-spinner mr-2 inline-block animate-spin text-primary"
+        aria-label="working"
+      />
       Texts on the public page. Empty fields use the committed default; a filled field overrides it.
       Changes go live on the next page load.
     </p>
@@ -203,5 +188,5 @@ onMounted(async () => {
       <span class="i-ph-floppy-disk" aria-hidden="true" />
       Save settings
     </button>
-  </main>
+  </div>
 </template>

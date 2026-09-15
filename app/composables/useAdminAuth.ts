@@ -4,6 +4,9 @@ const STORAGE_KEY = "nx-admin";
 
 export function useAdminAuth() {
   const token = useState<string | null>("admin-token", () => null);
+  // Resolved here, in setup, because handle401 runs after an await where
+  // useState has no Nuxt context anymore.
+  const toast = useToast();
 
   if (import.meta.client && !token.value) {
     token.value = sessionStorage.getItem(STORAGE_KEY);
@@ -24,5 +27,24 @@ export function useAdminAuth() {
   const authHeaders = (): Record<string, string> =>
     token.value ? { authorization: `Basic ${token.value}` } : {};
 
-  return { token, isAuthed, set, clear, authHeaders };
+  // Drops the session on a 401 so the admin layout re-opens the login dialog.
+  // Returns true when handled, so callers can skip their own error toast.
+  function handle401(e: unknown): boolean {
+    if (!is401(e)) return false;
+    clear();
+    toast.error("Please log in again");
+    return true;
+  }
+
+  return { token, isAuthed, set, clear, authHeaders, handle401 };
+}
+
+export function is401(e: unknown): boolean {
+  const err = e as { statusCode?: number; status?: number; response?: { status?: number } };
+  return err?.statusCode === 401 || err?.status === 401 || err?.response?.status === 401;
+}
+
+export function errMsg(e: unknown): string {
+  const err = e as { data?: { statusMessage?: string; message?: string }; message?: string };
+  return err?.data?.statusMessage || err?.data?.message || err?.message || "Request failed";
 }

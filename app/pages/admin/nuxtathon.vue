@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import type { ContributionIds, FinalResult, LeaderboardEntry, ManualCredit } from "#shared/types/event";
+import type {
+  ContributionIds,
+  FinalResult,
+  LeaderboardEntry,
+  ManualCredit,
+} from "#shared/types/event";
+
+definePageMeta({ layout: "admin" });
 
 interface Overview {
   phase: string;
@@ -28,26 +35,6 @@ const invalidIssues = ref(new Set<number>());
 const busy = ref(false);
 const loading = ref(false);
 
-const showLogin = ref(false);
-const loginUser = ref("");
-const loginPass = ref("");
-
-function errMsg(e: unknown): string {
-  const err = e as { data?: { statusMessage?: string; message?: string }; message?: string };
-  return err?.data?.statusMessage || err?.data?.message || err?.message || "Request failed";
-}
-function is401(e: unknown): boolean {
-  const err = e as { statusCode?: number; status?: number; response?: { status?: number } };
-  return err?.statusCode === 401 || err?.status === 401 || err?.response?.status === 401;
-}
-function requireAuth(e: unknown): boolean {
-  if (!is401(e)) return false;
-  auth.clear();
-  showLogin.value = true;
-  toast.error("Please log in again");
-  return true;
-}
-
 async function loadOverview() {
   const o = await $fetch<Overview>("/api/admin/overview", { headers: auth.authHeaders() });
   overview.value = o;
@@ -71,26 +58,6 @@ async function loadAll() {
   }
 }
 
-async function submitLogin() {
-  loading.value = true;
-  try {
-    const token = btoa(`${loginUser.value}:${loginPass.value}`);
-    const o = await $fetch<Overview>("/api/admin/overview", {
-      headers: { authorization: `Basic ${token}` },
-    });
-    auth.set(loginUser.value, loginPass.value);
-    overview.value = o;
-    credits.value = o.credits.map((c) => ({ ...c }));
-    loginPass.value = "";
-    showLogin.value = false;
-    await Promise.all([loadBoard(), loadArchive()]);
-  } catch (e) {
-    toast.error(is401(e) ? "Wrong username or password" : errMsg(e));
-  } finally {
-    loading.value = false;
-  }
-}
-
 async function act(path: string, successMsg: string) {
   busy.value = true;
   try {
@@ -98,7 +65,7 @@ async function act(path: string, successMsg: string) {
     toast.success(successMsg);
     await loadAll();
   } catch (e) {
-    if (!requireAuth(e)) toast.error(errMsg(e));
+    if (!auth.handle401(e)) toast.error(errMsg(e));
   } finally {
     busy.value = false;
   }
@@ -119,7 +86,7 @@ async function saveCredits() {
     // The 422 carries the offending issue numbers so we can point at the rows.
     const bad = (e as { data?: { data?: { invalid?: number[] } } })?.data?.data?.invalid;
     if (Array.isArray(bad)) invalidIssues.value = new Set(bad);
-    if (!requireAuth(e)) toast.error(errMsg(e));
+    if (!auth.handle401(e)) toast.error(errMsg(e));
   } finally {
     busy.value = false;
   }
@@ -169,37 +136,23 @@ async function reset() {
   if (ok) act("/api/admin/reset", "Reset - ready for a new event");
 }
 
+// The admin layout only mounts this page with a session in place.
 onMounted(async () => {
-  if (!auth.isAuthed.value) {
-    showLogin.value = true;
-    return;
-  }
   try {
     await loadAll();
   } catch (e) {
-    if (is401(e)) {
-      auth.clear();
-      showLogin.value = true;
-    } else {
-      toast.error(errMsg(e));
-    }
+    if (!auth.handle401(e)) toast.error(errMsg(e));
   }
 });
 </script>
 
 <template>
-  <main class="mx-auto flex w-full max-w-[46rem] flex-1 flex-col gap-6 px-5 py-10">
-    <NuxtLink to="/" class="btn self-start">
-      <span class="i-ph-arrow-left" aria-hidden="true" />
-      Back
-    </NuxtLink>
-
-    <h1
-      class="flex items-center gap-3 font-display text-2xl font-bold uppercase tracking-wider text-mint"
-    >
-      Admin
-      <span v-if="loading || busy" class="i-ph-spinner animate-spin text-base text-primary" />
-    </h1>
+  <div class="flex flex-col gap-6">
+    <span
+      v-if="loading || busy"
+      class="i-ph-spinner animate-spin text-base text-primary"
+      aria-label="working"
+    />
 
     <template v-if="overview">
       <div class="panel flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
@@ -345,22 +298,5 @@ onMounted(async () => {
         </div>
       </section>
     </template>
-
-    <AppDialog v-model="showLogin" title="Admin login" persistent>
-      <form class="flex flex-col gap-3" @submit.prevent="submitLogin">
-        <input v-model="loginUser" placeholder="username" autocomplete="username" class="input" />
-        <input
-          v-model="loginPass"
-          type="password"
-          placeholder="password"
-          autocomplete="current-password"
-          class="input"
-        />
-        <button class="btn mt-1 self-end" type="submit" :disabled="loading">
-          <span v-if="loading" class="i-ph-spinner animate-spin" aria-hidden="true" />
-          Log in
-        </button>
-      </form>
-    </AppDialog>
-  </main>
+  </div>
 </template>
