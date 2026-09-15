@@ -2,8 +2,11 @@
 import type { ChatMessage } from "#shared/types/chat";
 
 const { loggedIn, user } = useUserSession();
+const { confirm } = useConfirm();
 
 const open = ref(false);
+// New messages from others that arrived while the panel was closed.
+const unread = ref(0);
 const messages = ref<ChatMessage[]>([]);
 const draft = ref("");
 const sending = ref(false);
@@ -36,6 +39,12 @@ async function send() {
 }
 
 async function clearChat() {
+  const ok = await confirm({
+    title: "Clear chat",
+    message: "Delete every message for everyone? This cannot be undone.",
+    confirmLabel: "Clear",
+  });
+  if (!ok) return;
   await $fetch("/api/chat/clear", { method: "POST" });
   messages.value = [];
 }
@@ -83,6 +92,9 @@ onMounted(async () => {
       if (messages.value.length > MAX_CLIENT) {
         messages.value.splice(0, messages.value.length - MAX_CLIENT);
       }
+      if (!open.value && msg.login.toLowerCase() !== user.value?.login.toLowerCase()) {
+        unread.value += 1;
+      }
       scrollToBottom();
     }
   };
@@ -104,7 +116,11 @@ onBeforeUnmount(() => {
   if (ticker) clearInterval(ticker);
 });
 
-watch(open, (v) => v && scrollToBottom());
+watch(open, (v) => {
+  if (!v) return;
+  unread.value = 0;
+  scrollToBottom();
+});
 </script>
 
 <template>
@@ -174,9 +190,16 @@ watch(open, (v) => v && scrollToBottom());
       </footer>
     </div>
 
-    <button class="btn" @click="open = !open">
+    <button class="btn relative" @click="open = !open">
       <span class="i-ph-chat-circle block" aria-hidden="true" />
       Chat
+      <span
+        v-if="unread"
+        class="absolute -right-2 -top-2 min-w-5 rounded-full bg-amber px-1.5 py-0.5 text-center font-mono text-[0.65rem] font-bold leading-none text-[var(--base)] shadow-[0_0_10px_var(--amber)]"
+        :aria-label="`${unread} new messages`"
+      >
+        {{ unread > 99 ? "99+" : unread }}
+      </span>
     </button>
   </div>
 </template>
