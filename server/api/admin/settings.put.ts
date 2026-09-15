@@ -18,6 +18,14 @@ export default defineEventHandler(async (event) => {
     if (key in current) incoming[key] = current[key];
     else delete incoming[key];
   }
+  // Reject unparsable dates here; pickSettings would silently drop them and the
+  // default would slip in.
+  for (const key of ["startsAt", "endsAt", "qualifyingBefore"]) {
+    const v = incoming[key];
+    if (typeof v === "string" && v.trim() && Number.isNaN(Date.parse(v))) {
+      throw createError({ statusCode: 422, statusMessage: `Invalid date for ${key}` });
+    }
+  }
   // Validate the effective config (empty fields fall back to defaults), same as
   // the form does.
   assertWindow({ ...eventConfig, ...pickSettings(incoming as EventSettings) }, locked);

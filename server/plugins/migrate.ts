@@ -30,7 +30,12 @@ function backfillFinalConfig(state: RuntimeState, config: EventConfig): RuntimeS
   const missing = (r: FinalResult | null | undefined) => Boolean(r && !r.config);
   if (!missing(state.final) && !(state.archive ?? []).some(missing)) return null;
 
-  const fill = (r: FinalResult): FinalResult => (r.config ? r : { ...r, config });
+  // Keep what the result already knows about itself; the committed config only
+  // supplies the fields the old shape never stored.
+  const fill = (r: FinalResult): FinalResult =>
+    r.config
+      ? r
+      : { ...r, config: { ...config, title: r.title, startsAt: r.startsAt, endsAt: r.endsAt } };
   return {
     ...state,
     final: state.final ? fill(state.final) : state.final,

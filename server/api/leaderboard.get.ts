@@ -1,8 +1,13 @@
 import { createHash } from "node:crypto";
+import type { H3Event } from "h3";
+import type { EventConfig } from "#shared/types/event";
 
-// Keyed on the scoring-relevant config so any change to it busts the cache.
-const configKey = async (): Promise<string> => {
+// Keyed on the scoring-relevant config so any change to it busts the cache. The
+// resolved config is parked on the event so the handler fetches with the exact
+// config the key was built from.
+const configKey = async (event: H3Event): Promise<string> => {
   const c = await resolveEventConfig();
+  event.context.eventConfig = c;
   return createHash("sha256")
     .update(
       JSON.stringify([
@@ -22,7 +27,7 @@ const configKey = async (): Promise<string> => {
 // serves stale instantly and revalidates in the background. Once the event is
 // fired, the frozen standings are served and GitHub is never hit again.
 export default defineCachedEventHandler(
-  async () => {
+  async (event) => {
     const state = await readRuntimeState();
 
     if (state.final) {
@@ -40,7 +45,8 @@ export default defineCachedEventHandler(
       throw createError({ statusCode: 400, statusMessage: "NUXT_GITHUB_TOKEN is not set" });
     }
 
-    const result = await fetchLeaderboard(await resolveEventConfig(), token);
+    const config = (event.context.eventConfig as EventConfig) ?? (await resolveEventConfig());
+    const result = await fetchLeaderboard(config, token);
     const fetchedAt = new Date().toISOString();
 
     // PR + marker closed issues. Passed to applyCredits first (so a manual credit
