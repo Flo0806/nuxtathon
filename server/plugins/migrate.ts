@@ -11,7 +11,6 @@ export default defineNitroPlugin(async () => {
 
   // null = nothing to backfill, otherwise the state to persist.
   const next = backfillFinalConfig(raw, eventConfig);
-  console.log(next);
   if (!next) return;
 
   const stamp = new Date()
@@ -29,7 +28,6 @@ export default defineNitroPlugin(async () => {
 // Returns null when every result already carries a config.
 function backfillFinalConfig(state: RuntimeState, config: EventConfig): RuntimeState | null {
   const missing = (r: FinalResult | null | undefined) => Boolean(r && !r.config);
-  console.log(config);
   if (!missing(state.final) && !(state.archive ?? []).some(missing)) return null;
 
   const fill = (r: FinalResult): FinalResult => (r.config ? r : { ...r, config });
