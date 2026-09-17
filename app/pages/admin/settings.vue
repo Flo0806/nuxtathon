@@ -6,9 +6,15 @@ import { isKeyLocked, validateWindow } from "#shared/utils/event-window";
 
 definePageMeta({ layout: "admin" });
 
+interface DiscordStatus {
+  running: boolean;
+  source: string;
+  configured: boolean;
+}
 interface Payload {
   defaults: EventSettings;
   settings: EventSettings;
+  discord: DiscordStatus;
   // Keys the current phase forbids changing ("*" = all); frozen = event fired.
   locked: string[];
   frozen: boolean;
@@ -17,11 +23,12 @@ interface Payload {
 // Drives the form. New key = entry here + SETTINGS_KEYS.
 interface Field {
   key: SettingsKey;
-  group: "Content" | "Event";
+  group: "Content" | "Event" | "Integrations";
   label: string;
   help: string;
-  // list = one entry per line; datetime = UTC.
-  type: "text" | "markdown" | "list" | "datetime";
+  // list = one entry per line; datetime = UTC; secret = masked text; toggle =
+  // boolean held as "1" / "" in the string form state.
+  type: "text" | "markdown" | "list" | "datetime" | "secret" | "toggle";
 }
 const FIELDS: Field[] = [
   {
@@ -94,8 +101,22 @@ const FIELDS: Field[] = [
     help: `Logins whose "<marker> @user" comments count as a credit, one per line. ${ORGANIZER_LOGIN} is always included.`,
     type: "list",
   },
+  {
+    key: "discordWebhookUrl",
+    group: "Integrations",
+    label: "Discord webhook",
+    help: "Webhook url of the announcement channel (Discord: channel settings, Integrations). Empty turns announcements off.",
+    type: "secret",
+  },
+  {
+    key: "discordAnnounce",
+    group: "Integrations",
+    label: "Announce ranking changes",
+    help: "Post to Discord whenever the top 3 changes while the event is live. Fire always posts the final result.",
+    type: "toggle",
+  },
 ];
-const GROUPS = ["Content", "Event"] as const;
+const GROUPS = ["Content", "Event", "Integrations"] as const;
 
 const toast = useToast();
 const auth = useAdminAuth();
@@ -103,6 +124,8 @@ const auth = useAdminAuth();
 const defaults = ref<EventSettings>({});
 const locked = ref<string[]>(["*"]);
 const frozen = ref(false);
+const discordStatus = ref<DiscordStatus | null>(null);
+const testing = ref(false);
 // String form state; lists and datetimes are converted on load/save.
 const form = reactive(
   Object.fromEntries(SETTINGS_KEYS.map((k) => [k, ""])) as Record<SettingsKey, string>,
@@ -118,13 +141,15 @@ const toIso = (local: string) => (local ? `${local}:00.000Z` : "");
 
 function toForm(key: SettingsKey, value: EventSettings[SettingsKey] | undefined): string {
   if (Array.isArray(value)) return value.join("\n");
+  if (typeof value === "boolean") return value ? "1" : "";
   const v = value ?? "";
   return typeOf(key) === "datetime" ? toLocal(v) : v;
 }
-function fromForm(key: SettingsKey): string | string[] {
+function fromForm(key: SettingsKey): string | string[] | boolean {
   const v = form[key];
   if (typeOf(key) === "list") return v.split("\n");
   if (typeOf(key) === "datetime") return toIso(v);
+  if (typeOf(key) === "toggle") return v === "1";
   return v;
 }
 function defaultOf(key: SettingsKey): string {
@@ -170,6 +195,7 @@ function apply(p: Payload) {
   defaults.value = p.defaults;
   locked.value = p.locked;
   frozen.value = p.frozen;
+  discordStatus.value = p.discord;
   for (const key of SETTINGS_KEYS) form[key] = toForm(key, p.settings[key]);
 }
 
@@ -202,6 +228,24 @@ async function save() {
   }
 }
 
+// Uses the url currently in the form, saved or not, so a wrong url is caught
+// before it is stored.
+async function sendTest() {
+  testing.value = true;
+  try {
+    await $fetch("/api/admin/announce-test", {
+      method: "POST",
+      headers: auth.authHeaders(),
+      body: { webhookUrl: form.discordWebhookUrl },
+    });
+    toast.success("Test message sent");
+  } catch (e) {
+    if (!auth.handle401(e)) toast.error(errMsg(e));
+  } finally {
+    testing.value = false;
+  }
+}
+
 const { visible } = useAdminPage(load);
 </script>
 
@@ -222,7 +266,8 @@ const { visible } = useAdminPage(load);
     >
       <span class="i-ph-lock mt-[2px] shrink-0" aria-hidden="true" />
       <span
-        >The event is fired. Settings are read-only until you unfreeze or start a new event.</span
+        >The event is fired. Content and event settings are read-only until you unfreeze or start a
+        new event; integrations stay editable.</span
       >
     </p>
 
@@ -261,11 +306,28 @@ const { visible } = useAdminPage(load);
         </div>
         <p class="font-mono text-[0.72rem] leading-relaxed text-muted">{{ f.help }}</p>
 
+        <label
+          v-if="f.type === 'toggle'"
+          class="inline-flex cursor-pointer items-center gap-3 font-mono text-sm text-fg"
+        >
+          <input
+            :id="`s-${f.key}`"
+            type="checkbox"
+            :checked="form[f.key] === '1'"
+            :disabled="isLocked(f)"
+            class="h-4 w-4 accent-[var(--primary)]"
+            @change="form[f.key] = ($event.target as HTMLInputElement).checked ? '1' : ''"
+          />
+          {{ form[f.key] === "1" ? "on" : "off" }}
+        </label>
         <input
-          v-if="f.type === 'text' || f.type === 'datetime'"
+          v-else-if="f.type === 'text' || f.type === 'datetime' || f.type === 'secret'"
           :id="`s-${f.key}`"
           v-model="form[f.key]"
-          :type="f.type === 'datetime' ? 'datetime-local' : 'text'"
+          :type="
+            f.type === 'datetime' ? 'datetime-local' : f.type === 'secret' ? 'password' : 'text'
+          "
+          autocomplete="off"
           :placeholder="defaultOf(f.key)"
           :disabled="isLocked(f)"
           class="input disabled:opacity-50"
@@ -312,13 +374,26 @@ const { visible } = useAdminPage(load);
         </p>
         <input value="UTC" disabled class="input opacity-50" aria-label="display time zone" />
       </div>
+
+      <div v-if="g === 'Integrations'" class="flex flex-wrap items-center gap-3">
+        <span class="font-mono text-[0.72rem] uppercase tracking-wider text-muted">
+          discord
+          <span :class="discordStatus?.configured ? 'text-primary' : 'text-amber'">
+            {{ discordStatus?.configured ? "configured" : "not configured" }}
+          </span>
+          <span v-if="discordStatus?.configured">({{ discordStatus.source }})</span>
+        </span>
+        <button class="btn" :disabled="testing || !form.discordWebhookUrl.trim()" @click="sendTest">
+          <span
+            :class="testing ? 'i-ph-spinner animate-spin' : 'i-ph-paper-plane-tilt'"
+            aria-hidden="true"
+          />
+          Send test message
+        </button>
+      </div>
     </section>
 
-    <button
-      class="btn self-start"
-      :disabled="busy || loading || frozen || !formValid"
-      @click="save"
-    >
+    <button class="btn self-start" :disabled="busy || loading || !formValid" @click="save">
       <span class="i-ph-floppy-disk" aria-hidden="true" />
       Save settings
     </button>

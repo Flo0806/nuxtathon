@@ -2,7 +2,14 @@
 export default defineNuxtConfig({
   compatibilityDate: "2025-07-15",
   devtools: { enabled: true },
-  modules: ["@unocss/nuxt", "@pinia/nuxt", "nuxt-auth-utils"],
+  modules: ["@unocss/nuxt", "@pinia/nuxt", "nuxt-auth-utils", "nuxt-pigeon"],
+  nuxtPigeon: {
+    channels: {
+      // The webhook url is an admin setting, not an env var: the organizer sets
+      // it on the settings page. server/plugins/pigeon.ts loads it on start.
+      discord: { credentials: "runtime" },
+    },
+  },
   css: ["~/assets/css/main.css"],
   runtimeConfig: {
     // Server-only secrets, populated from NUXT_* env vars at runtime.

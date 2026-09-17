@@ -6,12 +6,10 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<{ settings?: EventSettings }>(event);
   const incoming = (body?.settings ?? {}) as Record<string, unknown>;
 
-  const { frozen, locked } = await settingsLock();
-  if (frozen) {
-    throw createError({ statusCode: 409, statusMessage: "Event is fired; unfreeze or start new" });
-  }
+  const { locked } = await settingsLock();
 
-  // Locked keys keep their stored value whatever the payload says.
+  // Locked keys keep their stored value whatever the payload says. Integration
+  // keys are never locked, so they stay editable on a fired event.
   const current = (await readSettings()) as Record<string, unknown>;
   for (const key of SETTINGS_KEYS) {
     if (!isKeyLocked(locked, key)) continue;
@@ -32,5 +30,6 @@ export default defineEventHandler(async (event) => {
 
   await writeSettings(incoming as EventSettings);
   await invalidateLeaderboardCache();
-  return { settings: await readSettings(), ...(await settingsLock()) };
+  await configureDiscord();
+  return { settings: await readSettings(), ...(await settingsLock()), discord: discord.status() };
 });

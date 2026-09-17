@@ -6,5 +6,5 @@ export default defineEventHandler(async () => {
   const settings = await readSettings();
   const defaults: EventSettings = {};
   for (const key of SETTINGS_KEYS) defaults[key] = eventConfig[key] as never;
-  return { defaults, settings, ...(await settingsLock()) };
+  return { defaults, settings, ...(await settingsLock()), discord: discord.status() };
 });
