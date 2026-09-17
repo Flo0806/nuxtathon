@@ -1,26 +1,13 @@
-import type { EventConfig, FinalResult } from "#shared/types/event";
-
-// Public shape of an archived event. The slug is the start date; fire upserts
-// by (title, startsAt), so two archived events never share one.
-export interface ArchiveSummary {
-  slug: string;
-  title: string;
-  eyebrow: string;
-  startsAt: string;
-  endsAt: string;
-  finalizedAt: string;
-  winner: { login: string; name: string | null; avatarUrl: string } | null;
-  stats: FinalResult["stats"];
-  contributors: number;
-}
+import type { ArchiveSummary, EventConfig, FinalResult } from "#shared/types/event";
 
 // Slugs for a whole list: the start date, with "-2", "-3" appended when two
-// events share a day (test runs, mostly). Computed over the sorted list so the
-// index and the detail lookup agree.
+// events share a day (test runs, mostly). Numbered in firing order so a later
+// same-day event never steals an existing url.
 export function archiveSlugs(list: FinalResult[]): Map<FinalResult, string> {
   const seen = new Map<string, number>();
   const out = new Map<FinalResult, string>();
-  for (const r of list) {
+  const chronological = [...list].sort((a, b) => a.finalizedAt.localeCompare(b.finalizedAt));
+  for (const r of chronological) {
     const day = r.startsAt.slice(0, 10);
     const n = (seen.get(day) ?? 0) + 1;
     seen.set(day, n);
@@ -30,13 +17,16 @@ export function archiveSlugs(list: FinalResult[]): Map<FinalResult, string> {
 }
 
 // Results archived before FinalResult.config existed are backfilled on boot,
-// but a defensive merge keeps this robust for a copied-in old file too.
+// but a defensive merge keeps this robust for a copied-in old file too. The
+// result is public, so credentials are blanked whatever the stored config holds.
 export const archivedConfig = (r: FinalResult): EventConfig => ({
   ...eventConfig,
   ...r.config,
   title: r.title,
   startsAt: r.startsAt,
   endsAt: r.endsAt,
+  discordWebhookUrl: "",
+  discordAnnounce: false,
 });
 
 export function summarize(r: FinalResult, slug: string): ArchiveSummary {

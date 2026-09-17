@@ -1,17 +1,7 @@
 <script setup lang="ts">
-interface Summary {
-  slug: string;
-  title: string;
-  eyebrow: string;
-  startsAt: string;
-  endsAt: string;
-  finalizedAt: string;
-  winner: { login: string; name: string | null; avatarUrl: string } | null;
-  stats: { submitted: number; merged: number; issuesClosed: number };
-  contributors: number;
-}
+import type { ArchiveSummary } from "#shared/types/event";
 
-const { data: events } = await useFetch<Summary[]>("/api/archive");
+const { data: events } = await useFetch<ArchiveSummary[]>("/api/archive");
 
 useSeoMeta({ title: "Nuxtathon - Archive", ogTitle: "Nuxtathon - Archive" });
 </script>

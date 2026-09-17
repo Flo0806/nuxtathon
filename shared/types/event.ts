@@ -137,3 +137,17 @@ export interface RuntimeState {
   // Past finalized events, retained across resets.
   archive: FinalResult[];
 }
+
+// Public list entry for /api/archive.
+export interface ArchiveSummary {
+  // Start date, "-2" etc. appended when two events share a day.
+  slug: string;
+  title: string;
+  eyebrow: string;
+  startsAt: string;
+  endsAt: string;
+  finalizedAt: string;
+  winner: { login: string; name: string | null; avatarUrl: string } | null;
+  stats: EventStats;
+  contributors: number;
+}
