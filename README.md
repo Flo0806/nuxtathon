@@ -132,6 +132,13 @@ backup of `.data/state/runtime` next to it. Deploy and let it start **before**
 touching Settings or `config/event.json`, since the migration takes the
 committed config as the one the archived event ran with.
 
+## Archive
+
+Every fired event is kept and shown at `/archive` (linked from the start page
+once there is one), each at `/archive/<start-date>` with the texts, rules and
+standings it ended with. The data is the `FinalResult` written on fire, so
+later settings changes never touch an archived page.
+
 ## Discord announcements
 
 Optional, via [nuxt-pigeon](https://github.com/Flo0806/nuxt-pigeon). The

@@ -48,11 +48,7 @@ const description = computed(() =>
 const dateRange = computed(() => {
   if (!store.config) return "";
   const { startsAt, endsAt, displayTimeZone } = store.config;
-  const fmt = (iso: string, opts: Intl.DateTimeFormatOptions) =>
-    new Intl.DateTimeFormat("en-US", { timeZone: displayTimeZone, ...opts }).format(new Date(iso));
-  const start = fmt(startsAt, { month: "short", day: "numeric" });
-  const end = fmt(endsAt, { day: "numeric", year: "numeric" });
-  return `${start} - ${end} · ${displayTimeZone}`;
+  return formatDateRange(startsAt, endsAt, displayTimeZone);
 });
 </script>
 
@@ -111,6 +107,10 @@ const dateRange = computed(() => {
           <span class="i-simple-icons-discord" aria-hidden="true" />
           Join the Discord
         </a>
+        <NuxtLink v-if="store.archiveCount" to="/archive" class="btn">
+          <span class="i-ph-trophy" aria-hidden="true" />
+          Past events
+        </NuxtLink>
       </div>
 
       <section v-if="showLeaderboard" class="mx-auto flex w-full max-w-[42rem] flex-col gap-4">
