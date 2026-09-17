@@ -49,12 +49,17 @@ export function assertWindow(w: EventWindow, locked: readonly string[] = []) {
 }
 
 // Only real overrides are stored: empty or equal-to-default values are dropped.
+// Booleans are stored only when they differ from the default.
 export function pickSettings(input: EventSettings): EventSettings {
   const out: EventSettings = {};
   for (const key of SETTINGS_KEYS) {
     const value = input[key];
     const fallback = eventConfig[key];
-    if (Array.isArray(fallback)) {
+    if (typeof fallback === "boolean") {
+      if (typeof value === "boolean" && value !== fallback) {
+        (out as Record<string, unknown>)[key] = value;
+      }
+    } else if (Array.isArray(fallback)) {
       const list = Array.isArray(value) ? value.map((v) => String(v).trim()).filter(Boolean) : [];
       if (list.length && list.join("\n") !== fallback.join("\n")) {
         (out as Record<string, unknown>)[key] = list;
@@ -66,4 +71,14 @@ export function pickSettings(input: EventSettings): EventSettings {
     }
   }
   return out;
+}
+
+// Config as it goes into FinalResult: everything the event ran with, minus
+// credentials.
+export function archivableConfig(config: EventConfig): EventConfig {
+  return {
+    ...config,
+    discordWebhookUrl: eventConfig.discordWebhookUrl,
+    discordAnnounce: eventConfig.discordAnnounce,
+  };
 }

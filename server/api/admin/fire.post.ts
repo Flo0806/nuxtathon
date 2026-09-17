@@ -1,4 +1,5 @@
 import type { FinalResult } from "#shared/types/event";
+import { announceFinal } from "~~/server/utils/announce";
 
 // Freeze the ranking, release prizes, and archive the result in one shot.
 export default defineEventHandler(async () => {
@@ -33,7 +34,7 @@ export default defineEventHandler(async () => {
     title: config.title,
     startsAt: config.startsAt,
     endsAt: config.endsAt,
-    config,
+    config: archivableConfig(config),
     stats: { ...result.stats, issuesClosed: closed.size },
     standings,
     coreTeam: result.coreTeam,
@@ -48,6 +49,9 @@ export default defineEventHandler(async () => {
 
   await writeRuntimeState({ ...state, final, prizesReleased: true, archive });
   await invalidateLeaderboardCache();
+  announceFinal(config, standings, final.stats).catch((e) =>
+    console.error("[announce] final post failed:", e),
+  );
 
   return { finalizedAt: final.finalizedAt, winner: final.standings[0]?.login ?? null };
 });

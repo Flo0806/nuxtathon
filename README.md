@@ -132,6 +132,22 @@ backup of `.data/state/runtime` next to it. Deploy and let it start **before**
 touching Settings or `config/event.json`, since the migration takes the
 committed config as the one the archived event ran with.
 
+## Discord announcements
+
+Optional, via [nuxt-pigeon](https://github.com/Flo0806/nuxt-pigeon). The
+webhook url is an admin setting (Settings tab, Integrations), not an env var,
+so the organizer can set it without a deploy; "Send test message" posts a
+sample card. What gets posted:
+
+- **Ranking update** whenever the ordered top 3 changes while the event is
+  `live` (checked after every GitHub recompute, so at most every 5 minutes),
+  with the movement of each entry. Needs "Announce ranking changes" on.
+- **Final results** on fire, with the winner and the social preview image.
+- **Announcement** on "Start new", when the checkbox in the dialog is ticked.
+
+Posts are fire-and-forget: a Discord failure never affects the board, and a
+missed ranking post is retried on the next recompute.
+
 ## Social preview
 
 `/og.png` is rendered on the server from the resolved config (eyebrow, title,

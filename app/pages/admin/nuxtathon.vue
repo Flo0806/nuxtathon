@@ -129,7 +129,14 @@ async function fire() {
 }
 // Start new: archive the fired event, open the next one. Dates are UTC.
 const showStart = ref(false);
-const start = reactive({ eyebrow: "", title: "", startsAt: "", endsAt: "", qualifyingBefore: "" });
+const start = reactive({
+  eyebrow: "",
+  title: "",
+  startsAt: "",
+  endsAt: "",
+  qualifyingBefore: "",
+  announce: true,
+});
 const toLocal = (ms: number) => new Date(ms).toISOString().slice(0, 16);
 const toIso = (local: string) => (local ? `${local}:00.000Z` : "");
 const DAY = 24 * 60 * 60 * 1000;
@@ -155,6 +162,7 @@ function openStart() {
   start.endsAt = toLocal(s + 2 * DAY - 60 * 1000);
   start.qualifyingBefore = toLocal(s - 4 * DAY);
   touched.startsAt = touched.endsAt = touched.qualifyingBefore = false;
+  start.announce = true;
   showStart.value = true;
 }
 
@@ -168,6 +176,7 @@ async function submitStart() {
       headers: auth.authHeaders(),
       body: {
         settings: { eyebrow: start.eyebrow, title: start.title, ...startWindow.value },
+        announce: start.announce,
       },
     });
     showStart.value = false;
@@ -370,6 +379,13 @@ const { visible } = useAdminPage(loadAll);
           <span v-if="shownError(f.key)" class="normal-case tracking-normal text-red-400">
             {{ shownError(f.key) }}
           </span>
+        </label>
+
+        <label
+          class="inline-flex cursor-pointer items-center gap-3 font-mono text-[0.72rem] uppercase tracking-wider text-muted"
+        >
+          <input v-model="start.announce" type="checkbox" class="h-4 w-4 accent-[var(--primary)]" />
+          Announce on Discord
         </label>
 
         <div class="mt-1 flex justify-end gap-2">

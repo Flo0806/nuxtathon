@@ -3,7 +3,7 @@ import type { EventSettings } from "#shared/types/event";
 // Archive the fired event, clear live state, write the new window to settings.
 // Existing content overrides are kept.
 export default defineEventHandler(async (event) => {
-  const body = await readBody<{ settings?: EventSettings }>(event);
+  const body = await readBody<{ settings?: EventSettings; announce?: boolean }>(event);
   const incoming = body?.settings ?? {};
 
   const state = await readRuntimeState();
@@ -31,6 +31,12 @@ export default defineEventHandler(async (event) => {
   });
   await writeRuntimeState({ prizesReleased: false, credits: [], final: null, archive });
   await clearSnapshots();
+  await clearAnnounceState();
   await invalidateLeaderboardCache();
+  if (body?.announce) {
+    announceUpcoming(await resolveEventConfig()).catch((e) =>
+      console.error("[announce] upcoming post failed:", e),
+    );
+  }
   return { ok: true, settings: await readSettings() };
 });

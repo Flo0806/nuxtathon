@@ -28,6 +28,10 @@ export interface EventConfig {
   // IANA zone used purely for rendering dates and the countdown. Not editable
   // via settings yet: UTC is mandatory until the admin forms handle zones.
   displayTimeZone: string;
+  // Discord webhook for announcements (top-3 changes, fire). Admin-set, never
+  // locked by phase, stripped from the archived config.
+  discordWebhookUrl: string;
+  discordAnnounce: boolean;
 }
 
 // Always part of coreTeam and markerAuthors, whatever the settings say.
@@ -46,7 +50,10 @@ export const MECHANICS_KEYS = [
   "closeMarker",
   "markerAuthors",
 ] as const;
-export const SETTINGS_KEYS = [...CONTENT_KEYS, ...MECHANICS_KEYS] as const;
+// Editable in every phase, and left out of FinalResult.config (a webhook url is
+// a credential, not part of an event's record).
+export const INTEGRATION_KEYS = ["discordWebhookUrl", "discordAnnounce"] as const;
+export const SETTINGS_KEYS = [...CONTENT_KEYS, ...MECHANICS_KEYS, ...INTEGRATION_KEYS] as const;
 export type SettingsKey = (typeof SETTINGS_KEYS)[number];
 export type MechanicsKey = (typeof MECHANICS_KEYS)[number];
 

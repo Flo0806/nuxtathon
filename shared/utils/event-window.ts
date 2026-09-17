@@ -1,4 +1,5 @@
 import type { EventPhase } from "#shared/types/event";
+import { INTEGRATION_KEYS } from "#shared/types/event";
 
 export interface EventWindow {
   startsAt: string;
@@ -24,7 +25,8 @@ export function lockedSettingsKeys(phase: EventPhase, frozen: boolean): string[]
   return [];
 }
 export const isKeyLocked = (locked: readonly string[], key: string) =>
-  locked.includes("*") || locked.includes(key);
+  !(INTEGRATION_KEYS as readonly string[]).includes(key) &&
+  (locked.includes("*") || locked.includes(key));
 
 // Shared by server (422) and admin forms (inline). Empty = valid. Rules on a
 // locked field are skipped: its value is fixed and may legitimately be past.

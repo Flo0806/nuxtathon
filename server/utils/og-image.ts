@@ -111,7 +111,8 @@ export function formatWindow(config: Pick<EventConfig, "startsAt" | "endsAt">): 
 }
 
 export function ogTextFor(config: EventConfig, phase: string): OgText {
-  const label = phase === "results" ? "Final results" : "Live leaderboard";
+  const label =
+    phase === "results" ? "Final results" : phase === "upcoming" ? "Coming up" : "Live leaderboard";
   return {
     eyebrow: config.eyebrow,
     title: config.title,
