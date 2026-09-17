@@ -2,7 +2,9 @@
 export default defineNuxtConfig({
   compatibilityDate: "2025-07-15",
   devtools: { enabled: true },
-  modules: ["@unocss/nuxt", "@pinia/nuxt", "nuxt-auth-utils", "nuxt-pigeon"],
+  modules: ["@unocss/nuxt", "@pinia/nuxt", "nuxt-auth-utils", "nuxt-pigeon", "@jasy/nuxt"],
+  // Prefixed so jasy's Text/Image/Box never collide with our own components.
+  jasy: { prefix: "Pdf" },
   nuxtPigeon: {
     channels: {
       // The webhook url is an admin setting, not an env var: the organizer sets

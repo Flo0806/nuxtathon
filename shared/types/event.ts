@@ -109,6 +109,40 @@ export interface ManualCredit {
   issueNumber?: number;
 }
 
+// Curated Phosphor icons an award may carry. Rendered on the site via UnoCSS
+// (`i-ph-<name>-fill`) and in the certificate PDF from the iconify data.
+export const AWARD_ICONS = [
+  "trophy",
+  "medal",
+  "crown",
+  "star",
+  "sparkle",
+  "heart",
+  "handshake",
+  "lightning",
+  "fire",
+  "rocket-launch",
+  "bug",
+  "wrench",
+  "magnifying-glass",
+  "shield-check",
+  "users-three",
+  "confetti",
+] as const;
+export type AwardIcon = (typeof AWARD_ICONS)[number];
+
+// A prize the organizer hands out after the event. Free-form on purpose: the
+// prize categories change per event and are not derived from the ranking.
+export interface Award {
+  id: string;
+  login: string;
+  // "Most issues closed", "Most helpful community member", ...
+  title: string;
+  // One line, e.g. "for closing 21 issues in 48 hours".
+  text: string;
+  icon: AwardIcon;
+}
+
 // A frozen event result. Written on "fire" and kept so the ranking stops moving
 // as PRs keep merging after the event.
 export interface FinalResult {
@@ -121,6 +155,9 @@ export interface FinalResult {
   // only because results fired before this field existed get it backfilled by
   // the startup migration (server/plugins/migrate.ts).
   config?: EventConfig;
+  // Prizes, edited on the archive entry after fire. Optional: older results
+  // simply have none.
+  awards?: Award[];
   stats: EventStats;
   standings: LeaderboardEntry[];
   coreTeam: LeaderboardEntry[];

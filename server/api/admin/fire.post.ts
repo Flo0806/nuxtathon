@@ -1,4 +1,5 @@
-import type { FinalResult } from "#shared/types/event";
+import { randomUUID } from "node:crypto";
+import type { Award, FinalResult } from "#shared/types/event";
 import { announceFinal } from "~~/server/utils/announce";
 
 // Freeze the ranking, release prizes, and archive the result in one shot.
@@ -29,12 +30,28 @@ export default defineEventHandler(async () => {
     if (!bucket.issues.includes(c.issueNumber)) bucket.issues.push(c.issueNumber);
   }
 
+  // Seed the obvious prize so the awards tab does not start empty; the
+  // organizer renames or removes it.
+  const first = standings[0];
+  const awards: Award[] = first
+    ? [
+        {
+          id: randomUUID(),
+          login: first.login,
+          title: "Most issues closed",
+          text: `for closing ${first.score} ${first.score === 1 ? "issue" : "issues"} during the event`,
+          icon: "trophy",
+        },
+      ]
+    : [];
+
   const final: FinalResult = {
     finalizedAt: new Date().toISOString(),
     title: config.title,
     startsAt: config.startsAt,
     endsAt: config.endsAt,
     config: archivableConfig(config),
+    awards,
     stats: { ...result.stats, issuesClosed: closed.size },
     standings,
     coreTeam: result.coreTeam,
