@@ -179,3 +179,47 @@ export async function announceFinal(
     },
   );
 }
+
+// Posted from "Start new" when the organizer ticks the box: the next event's
+// window, with the fresh og image so the channel sees the new eyebrow.
+export async function announceUpcoming(config: EventConfig): Promise<void> {
+  if (!discord.status().configured) return;
+  const site = siteUrl();
+  const png = renderOgPng(await ogFontFiles(), ogTextFor(config, "upcoming"));
+  const day = (iso: string) =>
+    new Date(iso).toLocaleString("en-US", {
+      timeZone: "UTC",
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+
+  await discord.send(`📣 **${config.title} · ${config.eyebrow}** is announced.`, {
+    embeds: [
+      {
+        author: { name: config.title, url: site, icon_url: `${site}/app-icon.png` },
+        title: config.eyebrow,
+        url: site,
+        color: NUXT_GREEN,
+        description: config.description.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1"),
+        fields: [
+          { name: "Starts", value: `${day(config.startsAt)} UTC`, inline: true },
+          { name: "Ends", value: `${day(config.endsAt)} UTC`, inline: true },
+          {
+            name: "Issues must be created before",
+            value: `${day(config.qualifyingBefore)} UTC`,
+            inline: false,
+          },
+        ],
+        image: { url: "attachment://nuxtathon.png" },
+        footer: { text: "Countdown is running on the site" },
+        timestamp: new Date().toISOString(),
+      },
+    ],
+    media: [{ data: png, filename: "nuxtathon.png" }],
+    ...BOT_IDENTITY(),
+  });
+}
