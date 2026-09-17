@@ -109,12 +109,17 @@ export async function announceRankingIfChanged(
   const top = entries.slice(0, 3).map((e) => e.login);
   if (top.length === 0) return;
 
-  const storage = useStorage("state");
-  const prev = (await storage.getItem<AnnounceState>(ANNOUNCE_KEY)) ?? { top3: [], sentAt: null };
-  if (sameOrder(prev.top3, top)) return;
-
+  // Taken before the first await so a concurrent recompute cannot read the same
+  // stale state and post the change twice.
   inflight = true;
   try {
+    const storage = useStorage("state");
+    const prev = (await storage.getItem<AnnounceState>(ANNOUNCE_KEY)) ?? {
+      top3: [],
+      sentAt: null,
+    };
+    if (sameOrder(prev.top3, top)) return;
+
     const contributors = entries.filter((e) => e.score > 0).length;
     const embed = rankingEmbed(config, top3Lines(entries, prev.top3), stats, contributors);
     await discord.send("Ranking update", { embeds: [embed], ...BOT_IDENTITY() });
