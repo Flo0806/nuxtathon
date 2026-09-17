@@ -13,6 +13,7 @@ interface StatePayload {
   prizesReleased: boolean;
   snapshots: Snapshot[];
   ogVersion: string;
+  archiveCount: number;
 }
 
 export const useEventStore = defineStore("event", () => {
@@ -21,6 +22,7 @@ export const useEventStore = defineStore("event", () => {
   const prizesReleased = ref(false);
   const snapshots = ref<Snapshot[]>([]);
   const ogVersion = ref("");
+  const archiveCount = ref(0);
   const leaderboard = ref<LeaderboardEntry[]>([]);
   const stats = ref<EventStats | null>(null);
   const fetchedAt = ref<string | null>(null);
@@ -38,6 +40,7 @@ export const useEventStore = defineStore("event", () => {
     prizesReleased.value = data.prizesReleased;
     snapshots.value = data.snapshots;
     ogVersion.value = data.ogVersion;
+    archiveCount.value = data.archiveCount;
   }
 
   // `force` bypasses the hydration guard so the client poll can refresh.
@@ -63,6 +66,7 @@ export const useEventStore = defineStore("event", () => {
     prizesReleased,
     snapshots,
     ogVersion,
+    archiveCount,
     leaderboard,
     stats,
     fetchedAt,

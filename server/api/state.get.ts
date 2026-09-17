@@ -16,5 +16,7 @@ export default defineEventHandler(async () => {
     snapshots,
     // Versions the /og.png URL so link unfurlers refetch after a text change.
     ogVersion: ogHash(ogTextFor(config, phase)),
+    // Shows the archive entry point only once there is something in it.
+    archiveCount: state.archive.length,
   };
 });

@@ -21,11 +21,19 @@
         Flo Heuberger
       </a>
     </p>
-    <NuxtLink
-      to="/admin/nuxtathon"
-      class="font-mono text-[0.62rem] uppercase tracking-[0.2em] text-faint transition-colors hover:text-muted"
-    >
-      Admin
-    </NuxtLink>
+    <p class="flex gap-4">
+      <NuxtLink
+        to="/archive"
+        class="font-mono text-[0.62rem] uppercase tracking-[0.2em] text-faint transition-colors hover:text-muted"
+      >
+        Archive
+      </NuxtLink>
+      <NuxtLink
+        to="/admin/nuxtathon"
+        class="font-mono text-[0.62rem] uppercase tracking-[0.2em] text-faint transition-colors hover:text-muted"
+      >
+        Admin
+      </NuxtLink>
+    </p>
   </footer>
 </template>
