@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { H3Event } from "h3";
 import type { EventConfig } from "#shared/types/event";
+import { announceRankingIfChanged } from "../utils/announce";
 
 // Keyed on the scoring-relevant config so any change to it busts the cache. The
 // resolved config is parked on the event so the handler fetches with the exact
@@ -72,6 +73,15 @@ export default defineCachedEventHandler(
       entries.map((entry) => entry.login),
       fetchedAt,
     );
+
+    // Not awaited: Discord latency must not delay the board, and a failed post
+    // is retried on the next recompute.
+    announceRankingIfChanged(
+      config,
+      resolvePhase(config, state.prizesReleased),
+      entries,
+      stats,
+    ).catch((e) => console.error("[announce] ranking post failed:", e));
 
     return { entries, coreTeam: result.coreTeam, stats, contributions, fetchedAt };
   },

@@ -1,6 +1,3 @@
-import { mkdir, writeFile, access } from "node:fs/promises";
-import { join } from "node:path";
-
 // Social preview, rendered from the resolved config (a fired event serves its
 // archived one) and cached per text variant. The URL carries the same hash as
 // `v=` so link unfurlers re-fetch after a settings change instead of reusing
@@ -29,28 +26,3 @@ export default defineEventHandler(async (event) => {
     return sendRedirect(event, "/og-fallback.png", 302);
   }
 });
-
-const FONT_FILES = ["ChakraPetch-Bold.ttf", "JetBrainsMono-Bold.ttf", "JetBrainsMono-Medium.ttf"];
-
-// resvg-js wants font paths, but bundled server assets are only reachable as
-// buffers. Write them next to the runtime state once and reuse the paths.
-async function ogFontFiles(): Promise<string[]> {
-  const dir = join(process.cwd(), ".data", "fonts");
-  await mkdir(dir, { recursive: true });
-  const assets = useStorage("assets:server");
-  return Promise.all(
-    FONT_FILES.map(async (name) => {
-      const path = join(dir, name);
-      const exists = await access(path).then(
-        () => true,
-        () => false,
-      );
-      if (!exists) {
-        const buf = await assets.getItemRaw<Buffer>(`fonts/${name}`);
-        if (!buf) throw new Error(`OG font missing: ${name}`);
-        await writeFile(path, buf);
-      }
-      return path;
-    }),
-  );
-}
