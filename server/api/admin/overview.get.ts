@@ -9,6 +9,9 @@ export default defineEventHandler(async () => {
     credits: state.credits,
     finalized: Boolean(state.final),
     finalizedAt: state.final?.finalizedAt ?? null,
+    // Drives the "no awards yet" hint in the start dialog: once the next event
+    // opens, handing out prizes for this one is effectively over.
+    awardCount: state.final?.awards?.length ?? 0,
     archiveCount: state.archive.length,
   };
 });

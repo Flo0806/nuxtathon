@@ -60,7 +60,12 @@ useSeoMeta({ title: "Nuxtathon - Archive", ogTitle: "Nuxtathon - Archive" });
           />
           <span class="text-fg">{{ e.winner.name || e.winner.login }}</span>
         </span>
-        <span>{{ e.stats.issuesClosed }} issues · {{ e.contributors }} contributors</span>
+        <span>
+          {{ e.stats.issuesClosed }} issues · {{ e.contributors }} contributors
+          <template v-if="e.awardCount">
+            · {{ e.awardCount }} {{ e.awardCount === 1 ? "award" : "awards" }}
+          </template>
+        </span>
       </div>
       <span
         class="i-ph-caret-right shrink-0 text-muted group-hover:text-primary"

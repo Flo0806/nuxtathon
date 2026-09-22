@@ -3,6 +3,7 @@
 const TABS = [
   { to: "/admin/nuxtathon", label: "Event", icon: "i-ph-lightning" },
   { to: "/admin/settings", label: "Settings", icon: "i-ph-sliders-horizontal" },
+  { to: "/admin/awards", label: "Awards", icon: "i-ph-trophy" },
 ];
 
 const auth = useAdminAuth();
