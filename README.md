@@ -172,6 +172,32 @@ sample card. What gets posted:
 Posts are fire-and-forget: a Discord failure never affects the board, and a
 missed ranking post is retried on the next recompute.
 
+## Public API
+
+Read-only JSON at `/api/v1`, CORS-open so another site (nuxt.com, a dashboard,
+a bot) can pull the event without scraping. `GET /api/v1` lists every endpoint.
+
+| Endpoint                 | What it answers                                                                                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `/api/v1/summary`        | Everything a teaser needs in one request: title, window, stats, top 3, winner. `?top=N` widens the list.                             |
+| `/api/v1/event`          | The current event in full: description (Markdown and plain), rule lines, point rules as structured data, issue cutoff, core team.    |
+| `/api/v1/leaderboard`    | The whole ranking plus the core team. `?limit=N` trims it, `?include=contributions` adds the issue and PR numbers behind each score. |
+| `/api/v1/archive`        | Every finished event with its winner and award count.                                                                                |
+| `/api/v1/archive/{slug}` | One finished event: standings, awards, and ready-made certificate URLs.                                                              |
+| `/api/v1/users/{login}`  | One contributor across all finished events, with totals and awards. `?logins=a,b,c` returns several.                                 |
+
+Every response in the table above carries a `meta` block (`generatedAt`,
+`nextUpdateAt`, `phase`); the `/api/v1` index answers with `version`, `docs` and
+`endpoints` instead.
+Caching is the point: the ranking is recomputed at most every five minutes, and
+the `ETag` covers the payload and the phase but not the timestamps, so a
+conditional request keeps getting `304 Not Modified` for as long as the data
+itself is unchanged. Nothing here ever triggers a GitHub call of its own; it reads the
+same cache the site does.
+
+Fields are added, never removed or retyped. A breaking change would ship as
+`/api/v2`.
+
 ## Social preview
 
 `/og.png` is rendered on the server from the resolved config (eyebrow, title,

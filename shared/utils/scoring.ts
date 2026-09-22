@@ -1,4 +1,5 @@
 import type { IssueFacts, IssueFactsMap, ScoringRules } from "../types/scoring";
+import { DEFAULT_SCORING } from "../types/scoring";
 
 const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -90,4 +91,52 @@ export function scoringSummary(rules: ScoringRules): string[] {
 export function scoreUnit(rules: ScoringRules | undefined, value: number): string {
   const noun = !rules || isDefaultScoring(rules) ? "issue" : "point";
   return `${value} ${value === 1 ? noun : `${noun}s`}`;
+}
+
+// Forces any stored block onto the current shape. Results archived under an
+// older shape, a hand-edited settings file or a partial payload all end up with
+// every rule present and every number finite, so nothing downstream has to
+// guard. Unknown keys are dropped rather than guessed at: a renamed rule is a
+// different rule, and silently carrying its numbers over would change scores.
+export function normalizeScoringRules(
+  input: Partial<ScoringRules> | undefined,
+  defaults: ScoringRules = DEFAULT_SCORING,
+): ScoringRules {
+  const num = (v: unknown, fallback: number) =>
+    v === "" || v === null || v === undefined || !Number.isFinite(Number(v)) ? fallback : Number(v);
+  const positive = (v: unknown, fallback: number) => {
+    const n = num(v, fallback);
+    return n > 0 ? n : fallback;
+  };
+  const on = (v: unknown, fallback: boolean) => (typeof v === "boolean" ? v : fallback);
+  const i = input ?? defaults;
+
+  return {
+    issuePoints: {
+      enabled: on(i.issuePoints?.enabled, defaults.issuePoints.enabled),
+      points: num(i.issuePoints?.points, defaults.issuePoints.points),
+    },
+    prPoints: {
+      enabled: on(i.prPoints?.enabled, defaults.prPoints.enabled),
+      points: num(i.prPoints?.points, defaults.prPoints.points),
+    },
+    ageBonus: {
+      enabled: on(i.ageBonus?.enabled, defaults.ageBonus.enabled),
+      afterMonths: positive(i.ageBonus?.afterMonths, defaults.ageBonus.afterMonths),
+      points: num(i.ageBonus?.points, defaults.ageBonus.points),
+    },
+    labelBonus: {
+      enabled: on(i.labelBonus?.enabled, defaults.labelBonus.enabled),
+      points: Object.fromEntries(
+        Object.entries(i.labelBonus?.points ?? defaults.labelBonus.points)
+          .map(([k, v]) => [k.trim(), Number(v)] as const)
+          .filter(([k, v]) => k && Number.isFinite(v)),
+      ),
+    },
+    upvoteBonus: {
+      enabled: on(i.upvoteBonus?.enabled, defaults.upvoteBonus.enabled),
+      per: positive(i.upvoteBonus?.per, defaults.upvoteBonus.per),
+      points: num(i.upvoteBonus?.points, defaults.upvoteBonus.points),
+    },
+  };
 }

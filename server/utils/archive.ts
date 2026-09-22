@@ -1,4 +1,5 @@
 import type { ArchiveSummary, EventConfig, FinalResult } from "#shared/types/event";
+import { DEFAULT_SCORING } from "#shared/types/scoring";
 
 // Slugs for a whole list: the start date, with "-2", "-3" appended when two
 // events share a day (test runs, mostly). Numbered in firing order so a later
@@ -27,6 +28,10 @@ export const archivedConfig = (r: FinalResult): EventConfig => ({
   endsAt: r.endsAt,
   discordWebhookUrl: "",
   discordAnnounce: false,
+  // Results fired before these fields existed carry neither, and an older result
+  // may carry an older scoring shape, so it is normalized rather than trusted.
+  scoring: normalizeScoringRules(r.config?.scoring, eventConfig.scoring ?? DEFAULT_SCORING),
+  showCustomRules: r.config?.showCustomRules ?? eventConfig.showCustomRules ?? true,
 });
 
 export function summarize(r: FinalResult, slug: string): ArchiveSummary {
