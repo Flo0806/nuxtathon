@@ -16,6 +16,7 @@ interface Overview {
   finalized: boolean;
   finalizedAt: string | null;
   archiveCount: number;
+  awardCount: number;
 }
 interface Board {
   entries: LeaderboardEntry[];
@@ -350,6 +351,17 @@ const { visible } = useAdminPage(loadAll);
         <p class="font-mono text-[0.72rem] leading-relaxed text-muted">
           The current result stays in the archive. The site switches to "upcoming" with this window;
           everything below stays editable in Settings until the start.
+        </p>
+        <p
+          v-if="overview && !overview.awardCount"
+          class="panel flex items-start gap-2 px-3 py-2 font-mono text-[0.72rem] leading-relaxed text-amber"
+        >
+          <span class="i-ph-warning mt-[2px] shrink-0" aria-hidden="true" />
+          <span>
+            No awards on the finished event yet. Hand them out in the
+            <NuxtLink to="/admin/awards" class="underline">Awards</NuxtLink> tab first; certificates
+            are the last thing anyone gets from it.
+          </span>
         </p>
         <input
           v-model="start.eyebrow"

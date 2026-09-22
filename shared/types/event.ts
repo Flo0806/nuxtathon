@@ -187,4 +187,5 @@ export interface ArchiveSummary {
   winner: { login: string; name: string | null; avatarUrl: string } | null;
   stats: EventStats;
   contributors: number;
+  awardCount: number;
 }

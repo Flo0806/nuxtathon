@@ -42,6 +42,7 @@ export function summarize(r: FinalResult, slug: string): ArchiveSummary {
     winner: winner ? { login: winner.login, name: winner.name, avatarUrl: winner.avatarUrl } : null,
     stats: r.stats,
     contributors: r.standings.filter((e) => e.score > 0).length,
+    awardCount: (r.awards ?? []).length,
   };
 }
 

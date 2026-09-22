@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { ContributionIds, LeaderboardEntry } from "#shared/types/event";
 
-const { entry, contributions } = defineProps<{
+const { entry, contributions, certificateBase } = defineProps<{
   entry: LeaderboardEntry;
   contributions?: ContributionIds;
+  // Archive only: "/archive/<slug>/certificate" turns on the download.
+  certificateBase?: string;
 }>();
 
 const linkIssues = computed(() => githubList("issue", idsFor(entry, "issues")));
@@ -86,5 +88,17 @@ function idsFor(e: LeaderboardEntry, kind: "issues" | "prs"): number[] {
         <span v-else>{{ entry.mergedPRs }} prs</span>
       </p>
     </div>
+
+    <a
+      v-if="certificateBase && entry.score > 0"
+      :href="`${certificateBase}/${entry.login}.pdf`"
+      target="_blank"
+      rel="noopener"
+      class="shrink-0 text-muted transition-colors hover:text-primary"
+      :title="`Certificate for ${entry.name || entry.login}`"
+      :aria-label="`Download certificate for ${entry.name || entry.login}`"
+    >
+      <span class="i-ph-certificate block text-lg" aria-hidden="true" />
+    </a>
   </div>
 </template>
