@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Award, FinalResult } from "#shared/types/event";
+import { isDefaultScoring, scoreUnit } from "#shared/utils/scoring";
 import { announceFinal } from "~~/server/utils/announce";
 
 // Freeze the ranking, release prizes, and archive the result in one shot.
@@ -17,7 +18,11 @@ export default defineEventHandler(async () => {
   // first, then fold the remaining manual issue numbers into the frozen count so it
   // matches what was on screen.
   const closed = new Set(result.closedIssues);
-  const standings = applyCredits(result.entries, state.credits, closed);
+  const standings = applyCredits(result.entries, state.credits, closed, {
+    rules: config.scoring,
+    facts: result.issueFacts,
+    contributions: result.contributions,
+  });
   const contributions = { ...result.contributions };
 
   for (const c of state.credits) {
@@ -47,7 +52,7 @@ export default defineEventHandler(async () => {
             id: randomUUID(),
             login: first.login,
             title: "Most issues closed",
-            text: `for closing ${first.score} ${first.score === 1 ? "issue" : "issues"} during the event`,
+            text: `for ${isDefaultScoring(config.scoring) ? `closing ${scoreUnit(config.scoring, first.score)}` : `scoring ${scoreUnit(config.scoring, first.score)}`} during the event`,
             icon: "trophy",
           },
         ]

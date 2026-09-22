@@ -1,3 +1,5 @@
+import type { ScoringRules } from "./scoring";
+
 // Static, committed event configuration (source: config/event.json).
 export interface EventConfig {
   title: string;
@@ -5,9 +7,13 @@ export interface EventConfig {
   eyebrow: string;
   // Markdown. Rendered on the public site.
   description: string;
-  // Short qualification rules shown under the intro (Markdown, inline). Empty
-  // hides the block, so this doubles as the on/off flag.
+  // Short qualification rules shown under the intro (Markdown, inline). The
+  // active point rules are appended to these on the site.
   rules: string[];
+  // Hides the hand-written `rules` above. Needed because an empty list falls
+  // back to the committed default, so there is no other way to drop them. The
+  // generated point rules are never affected.
+  showCustomRules: boolean;
   // Absolute UTC instants. Timezone is a display concern only (see displayTimeZone).
   startsAt: string;
   endsAt: string;
@@ -25,6 +31,9 @@ export interface EventConfig {
   // credits cannot be farmed by self-mentioning under any closed issue.
   // ORGANIZER_LOGIN is pinned in by resolveEventConfig regardless of settings.
   markerAuthors: string[];
+  // Point rules. Every rule off means one point per qualifying closed issue,
+  // which is how the first event was scored.
+  scoring: ScoringRules;
   // IANA zone used purely for rendering dates and the countdown. Not editable
   // via settings yet: UTC is mandatory until the admin forms handle zones.
   displayTimeZone: string;
@@ -38,7 +47,13 @@ export interface EventConfig {
 export const ORGANIZER_LOGIN = "danielroe";
 
 // Texts the admin may override at any time.
-export const CONTENT_KEYS = ["title", "eyebrow", "description", "rules"] as const;
+export const CONTENT_KEYS = [
+  "title",
+  "eyebrow",
+  "description",
+  "rules",
+  "showCustomRules",
+] as const;
 // Scoring-relevant keys. Editable only while the event is upcoming; once it
 // has started (or is frozen) the server refuses changes so the ranking cannot
 // be moved under the contributors' feet.
@@ -49,6 +64,7 @@ export const MECHANICS_KEYS = [
   "coreTeam",
   "closeMarker",
   "markerAuthors",
+  "scoring",
 ] as const;
 // Editable in every phase, and left out of FinalResult.config (a webhook url is
 // a credential, not part of an event's record).

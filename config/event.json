@@ -6,6 +6,7 @@
     "All issues and PRs must target the core [`nuxt/nuxt`](https://github.com/nuxt/nuxt) repository.",
     "To count, an issue must have been created before 13 July."
   ],
+  "showCustomRules": true,
   "startsAt": "2026-07-18T00:00:00.000Z",
   "endsAt": "2026-07-19T23:59:59.999Z",
   "qualifyingBefore": "2026-07-14T00:00:00.000Z",
@@ -23,5 +24,29 @@
   "markerAuthors": ["danielroe"],
   "displayTimeZone": "UTC",
   "discordWebhookUrl": "",
-  "discordAnnounce": false
+  "discordAnnounce": false,
+  "scoring": {
+    "issuePoints": {
+      "enabled": false,
+      "points": 1
+    },
+    "prPoints": {
+      "enabled": false,
+      "points": 1
+    },
+    "ageBonus": {
+      "enabled": false,
+      "afterMonths": 12,
+      "points": 1
+    },
+    "labelBonus": {
+      "enabled": false,
+      "points": {}
+    },
+    "upvoteBonus": {
+      "enabled": false,
+      "per": 25,
+      "points": 1
+    }
+  }
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { marked } from "marked";
+import { isDefaultScoring, scoringSummary } from "#shared/utils/scoring";
 
 const store = useEventStore();
 await store.load();
@@ -11,8 +12,16 @@ if (showLeaderboard.value) {
 
 const winner = computed(() => (store.phase === "results" ? (store.leaderboard[0] ?? null) : null));
 
-// Config-driven qualification rules (inline Markdown). Empty array hides them.
-const rules = computed(() => (store.config?.rules ?? []).map((r) => marked.parseInline(r)));
+// Config-driven qualification rules (inline Markdown), followed by the point
+// rules generated from the scoring block so they are never written twice.
+const rules = computed(() => [
+  ...(store.config?.showCustomRules === false
+    ? []
+    : (store.config?.rules ?? []).map((r) => marked.parseInline(r) as string)),
+  ...(store.config && !isDefaultScoring(store.config.scoring)
+    ? scoringSummary(store.config.scoring)
+    : []),
+]);
 
 const updatedAt = computed(() => {
   if (!store.fetchedAt || !store.config) return "";
@@ -83,7 +92,7 @@ const dateRange = computed(() => {
         :starts-at="store.config.startsAt"
         :ends-at="store.config.endsAt"
       />
-      <WinnerReveal v-else-if="winner" :entry="winner" />
+      <WinnerReveal v-else-if="winner" :entry="winner" :rules="store.config.scoring" />
       <p class="font-mono text-[0.72rem] tracking-[0.2em] uppercase text-muted">{{ dateRange }}</p>
       <OnlineCounter />
       <div

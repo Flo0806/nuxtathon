@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { LeaderboardEntry } from "#shared/types/event";
+import type { ScoringRules } from "#shared/types/scoring";
+import { scoreUnit } from "#shared/utils/scoring";
 
-defineProps<{ entry: LeaderboardEntry }>();
+const { entry, rules } = defineProps<{ entry: LeaderboardEntry; rules?: ScoringRules }>();
 </script>
 
 <template>
@@ -31,8 +33,6 @@ defineProps<{ entry: LeaderboardEntry }>();
       {{ entry.name || entry.login }}
     </h2>
     <p class="font-mono text-sm text-muted">@{{ entry.login }}</p>
-    <p class="font-mono text-sm text-primary">
-      {{ entry.score }} {{ entry.score === 1 ? "issue" : "issues" }} closed
-    </p>
+    <p class="font-mono text-sm text-primary">{{ scoreUnit(rules, entry.score) }}</p>
   </div>
 </template>
