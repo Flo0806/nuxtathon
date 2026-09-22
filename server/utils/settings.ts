@@ -92,34 +92,44 @@ export function archivableConfig(config: EventConfig): EventConfig {
 // settings file can then never break scoring.
 function normalizeScoring(input: ScoringRules | undefined): ScoringRules {
   const d = eventConfig.scoring ?? DEFAULT_SCORING;
-  const num = (v: unknown, fallback: number) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
-  const on = (v: unknown) => v === true;
+  // A cleared input field arrives as "" and would otherwise become 0.
+  const num = (v: unknown, fallback: number) =>
+    v === "" || v === null || v === undefined || !Number.isFinite(Number(v)) ? fallback : Number(v);
+  // Thresholds must stay positive: 0 months would make every issue "old", and a
+  // step of 0 would silently kill the upvote bonus.
+  const positive = (v: unknown, fallback: number) => {
+    const n = num(v, fallback);
+    return n > 0 ? n : fallback;
+  };
+  // Only an explicit boolean overrides the default, so a partial object cannot
+  // silently switch rules off.
+  const on = (v: unknown, fallback: boolean) => (typeof v === "boolean" ? v : fallback);
   const i = input ?? d;
   return {
     issuePoints: {
-      enabled: on(i.issuePoints?.enabled),
+      enabled: on(i.issuePoints?.enabled, d.issuePoints.enabled),
       points: num(i.issuePoints?.points, d.issuePoints.points),
     },
     prPoints: {
-      enabled: on(i.prPoints?.enabled),
+      enabled: on(i.prPoints?.enabled, d.prPoints.enabled),
       points: num(i.prPoints?.points, d.prPoints.points),
     },
     ageBonus: {
-      enabled: on(i.ageBonus?.enabled),
-      afterMonths: num(i.ageBonus?.afterMonths, d.ageBonus.afterMonths),
+      enabled: on(i.ageBonus?.enabled, d.ageBonus.enabled),
+      afterMonths: positive(i.ageBonus?.afterMonths, d.ageBonus.afterMonths),
       points: num(i.ageBonus?.points, d.ageBonus.points),
     },
     labelBonus: {
-      enabled: on(i.labelBonus?.enabled),
+      enabled: on(i.labelBonus?.enabled, d.labelBonus.enabled),
       points: Object.fromEntries(
-        Object.entries(i.labelBonus?.points ?? {})
+        Object.entries(i.labelBonus?.points ?? d.labelBonus.points)
           .map(([k, v]) => [k.trim(), Number(v)])
           .filter(([k, v]) => k && Number.isFinite(v as number)),
       ) as Record<string, number>,
     },
     upvoteBonus: {
-      enabled: on(i.upvoteBonus?.enabled),
-      per: num(i.upvoteBonus?.per, d.upvoteBonus.per),
+      enabled: on(i.upvoteBonus?.enabled, d.upvoteBonus.enabled),
+      per: positive(i.upvoteBonus?.per, d.upvoteBonus.per),
       points: num(i.upvoteBonus?.points, d.upvoteBonus.points),
     },
   };

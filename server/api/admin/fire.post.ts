@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Award, FinalResult } from "#shared/types/event";
+import { isDefaultScoring, scoreUnit } from "#shared/utils/scoring";
 import { announceFinal } from "~~/server/utils/announce";
 
 // Freeze the ranking, release prizes, and archive the result in one shot.
@@ -51,7 +52,7 @@ export default defineEventHandler(async () => {
             id: randomUUID(),
             login: first.login,
             title: "Most issues closed",
-            text: `for closing ${first.score} ${first.score === 1 ? "issue" : "issues"} during the event`,
+            text: `for ${isDefaultScoring(config.scoring) ? `closing ${scoreUnit(config.scoring, first.score)}` : `scoring ${scoreUnit(config.scoring, first.score)}`} during the event`,
             icon: "trophy",
           },
         ]

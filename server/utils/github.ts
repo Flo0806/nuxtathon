@@ -4,7 +4,7 @@ import type {
   EventStats,
   LeaderboardEntry,
 } from "#shared/types/event";
-import type { IssueFactsMap } from "#shared/types/scoring";
+import type { IssueFacts, IssueFactsMap } from "#shared/types/scoring";
 
 interface PrAuthor {
   __typename: string;
@@ -34,6 +34,15 @@ interface PrNode {
   // Commit authors carry co-authors (from Co-authored-by trailers, resolved to
   // GitHub accounts). `user` is null when the email is not linked to an account.
   commits: { nodes: { commit: { authors: { nodes: { user: ContributorUser | null }[] } } }[] };
+}
+
+// Scoring inputs for one issue, from either query: both select the same fields.
+function toIssueFacts(ref: Partial<IssueRefNode>): IssueFacts {
+  return {
+    createdAt: ref.createdAt ?? "",
+    labels: (ref.labels?.nodes ?? []).map((l) => l.name),
+    upvotes: ref.reactions?.totalCount ?? 0,
+  };
 }
 
 interface SearchPage {
@@ -262,6 +271,15 @@ const MARKER_QUERY = `
       nodes {
         ... on Issue {
           number
+          createdAt
+          labels(first: 20) {
+            nodes {
+              name
+            }
+          }
+          reactions(content: THUMBS_UP) {
+            totalCount
+          }
           comments(last: 20) {
             nodes {
               body
@@ -278,10 +296,9 @@ const MARKER_QUERY = `
 
 interface MarkerPage {
   pageInfo: { endCursor: string | null; hasNextPage: boolean };
-  nodes: {
-    number?: number;
+  nodes: (Partial<IssueRefNode> & {
     comments?: { nodes: { body: string; author: { login: string } | null }[] };
-  }[];
+  })[];
 }
 
 // Issues closed in the window carrying a credit marker in a comment from an
@@ -294,9 +311,9 @@ async function fetchMarkerCredits(
   to: string,
   keyword: string,
   authors: Set<string>,
-): Promise<{ issueNumber: number; logins: string[] }[]> {
+): Promise<{ issueNumber: number; logins: string[]; facts: IssueFacts }[]> {
   const search = `${REPO} is:issue is:closed closed:${toGithubStamp(from)}..${toGithubStamp(to)}`;
-  const out: { issueNumber: number; logins: string[] }[] = [];
+  const out: { issueNumber: number; logins: string[]; facts: IssueFacts }[] = [];
   let after: string | null = null;
 
   for (let page = 0; page < MAX_PAGES; page++) {
@@ -310,7 +327,13 @@ async function fetchMarkerCredits(
         if (!comment.author || !authors.has(comment.author.login.toLowerCase())) continue;
         for (const login of parseCreditedLogins(comment.body, keyword)) logins.add(login);
       }
-      if (logins.size > 0) out.push({ issueNumber: issue.number, logins: [...logins] });
+      if (logins.size > 0) {
+        out.push({
+          issueNumber: issue.number,
+          logins: [...logins],
+          facts: toIssueFacts(issue),
+        });
+      }
     }
     if (!result.pageInfo.hasNextPage) break;
     after = result.pageInfo.endCursor;
@@ -429,11 +452,7 @@ export async function fetchLeaderboard(
   for (const pr of prs) {
     for (const ref of pr.closingIssuesReferences.nodes) {
       closedInWindow.add(ref.number);
-      issueFacts[ref.number] = {
-        createdAt: ref.createdAt,
-        labels: (ref.labels?.nodes ?? []).map((l) => l.name),
-        upvotes: ref.reactions?.totalCount ?? 0,
-      };
+      issueFacts[ref.number] = toIssueFacts(ref);
     }
     const qualifying = pr.closingIssuesReferences.nodes.filter(
       (issue) => Date.parse(issue.createdAt) < cutoff,
@@ -474,9 +493,10 @@ export async function fetchLeaderboard(
   // Marker-credited logins (which carry no name) awaiting a GitHub lookup.
   const missingNames = new Map<string, Tally>();
 
-  for (const { issueNumber, logins } of markers) {
+  for (const { issueNumber, logins, facts } of markers) {
     if (closedInWindow.has(issueNumber)) continue;
     closedInWindow.add(issueNumber);
+    issueFacts[issueNumber] = facts;
     for (const login of logins) {
       if (isBotLogin(login)) continue;
       // Same case-insensitive keying: a marker "@norbiros" merges into the PR's

@@ -30,9 +30,10 @@ and AI co-author attributions such as `claude`) and the core team listed in
 `coreTeam`. Core team contributions are still tallied and archived, just kept out
 of the prize ranking.
 
-Score = qualifying closed issues + manual credits (see Admin). The board shows
-the merged-PR count as a secondary stat, plus window-wide counters for submitted
-and merged PRs (both bot-free).
+Score = one point per qualifying closed issue plus manual credits (see Admin).
+Optional rules add points for merged PRs, issue age, labels and thumbs-up; see
+[Scoring](#scoring). The board shows the merged-PR count as a secondary stat,
+plus window-wide counters for submitted and merged PRs (both bot-free).
 
 ## Configuration
 
