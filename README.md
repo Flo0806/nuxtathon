@@ -186,11 +186,13 @@ a bot) can pull the event without scraping. `GET /api/v1` lists every endpoint.
 | `/api/v1/archive/{slug}` | One finished event: standings, awards, and ready-made certificate URLs.                                                              |
 | `/api/v1/users/{login}`  | One contributor across all finished events, with totals and awards. `?logins=a,b,c` returns several.                                 |
 
-Every response carries a `meta` block (`generatedAt`, `nextUpdateAt`, `phase`).
+Every response in the table above carries a `meta` block (`generatedAt`,
+`nextUpdateAt`, `phase`); the `/api/v1` index answers with `version`, `docs` and
+`endpoints` instead.
 Caching is the point: the ranking is recomputed at most every five minutes, and
-the `ETag` is built from the payload **without** `meta`, so a conditional
-request keeps getting `304 Not Modified` for as long as the data itself is
-unchanged. Nothing here ever triggers a GitHub call of its own; it reads the
+the `ETag` covers the payload and the phase but not the timestamps, so a
+conditional request keeps getting `304 Not Modified` for as long as the data
+itself is unchanged. Nothing here ever triggers a GitHub call of its own; it reads the
 same cache the site does.
 
 Fields are added, never removed or retyped. A breaking change would ship as

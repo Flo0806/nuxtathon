@@ -9,12 +9,16 @@ const DATA_MAX_AGE = 300;
 
 export const apiSiteUrl = () => useRuntimeConfig().public.siteUrl || "https://nuxtathon.live";
 
-// Public, cross-origin, cacheable. The ETag is computed from the payload without
-// `meta`, so a client gets 304 for as long as the data itself is unchanged, even
-// though `generatedAt` moves on every request.
+// Public, cross-origin, cacheable. The ETag covers the payload plus the phase,
+// but not the timestamps: `generatedAt` moves on every request, while a phase
+// change (live -> evaluating) must reach a conditional client even when the
+// ranking itself did not move.
 export function sendApi<T extends { meta: ApiMeta }>(event: H3Event, payload: T): T | null {
-  const { meta: _meta, ...data } = payload;
-  const etag = `W/"${createHash("sha256").update(JSON.stringify(data)).digest("hex").slice(0, 16)}"`;
+  const { meta, ...data } = payload;
+  const etag = `W/"${createHash("sha256")
+    .update(JSON.stringify({ ...data, phase: meta.phase }))
+    .digest("hex")
+    .slice(0, 16)}"`;
 
   setResponseHeaders(event, {
     "access-control-allow-origin": "*",

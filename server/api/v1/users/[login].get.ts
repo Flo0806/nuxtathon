@@ -1,5 +1,7 @@
 import type { ApiUser, ApiUsers } from "#shared/types/api";
 
+const MAX_LOGINS = 50;
+
 // A contributor's record across every finished event. `?logins=a,b,c` on the
 // same route returns several at once, so a profile page needs one request.
 export default defineEventHandler(async (event) => {
@@ -11,6 +13,13 @@ export default defineEventHandler(async (event) => {
   const wanted = [...new Set([primary, ...extra].filter(Boolean).map((l) => l.toLowerCase()))];
   if (wanted.length === 0) {
     throw createError({ statusCode: 400, statusMessage: "No login given" });
+  }
+  // Each login is matched against every archived event, so the batch is bounded.
+  if (wanted.length > MAX_LOGINS) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Too many logins requested, at most ${MAX_LOGINS}`,
+    });
   }
 
   const list = await listArchive();
