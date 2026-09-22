@@ -4,12 +4,13 @@ import type { Award, FinalResult, LeaderboardEntry } from "#shared/types/event";
 // assets, the avatar fetched from GitHub (optional, a failure just drops it).
 export async function certificateInput(result: FinalResult, entry: LeaderboardEntry) {
   const assets = useStorage("assets:server");
-  const [display, mono, monoBold] = await Promise.all([
+  const [display, mono, monoBold, script] = await Promise.all([
     assets.getItemRaw<Uint8Array>("fonts/ChakraPetch-Bold.ttf"),
     assets.getItemRaw<Uint8Array>("fonts/JetBrainsMono-Medium.ttf"),
     assets.getItemRaw<Uint8Array>("fonts/JetBrainsMono-Bold.ttf"),
+    assets.getItemRaw<Uint8Array>("fonts/Caveat.ttf"),
   ]);
-  if (!display || !mono || !monoBold) throw new Error("certificate fonts missing");
+  if (!display || !mono || !monoBold || !script) throw new Error("certificate fonts missing");
 
   // Two url shapes: avatars.githubusercontent.com/u/1?v=4 (GraphQL, `s`) and
   // github.com/<login>.png?size=80 (manual credits, `size`). Set both.
@@ -28,7 +29,7 @@ export async function certificateInput(result: FinalResult, entry: LeaderboardEn
     // Until the organizer's own signature lands in the settings.
     signedBy: "Daniel Roe",
     avatar,
-    fonts: { display, mono, monoBold },
+    fonts: { display, mono, monoBold, script },
   };
 }
 

@@ -42,7 +42,7 @@ export interface CertificateInput {
   // GitHub avatar bytes, already fetched. Optional so a fetch failure still
   // yields a certificate.
   avatar?: Uint8Array;
-  fonts: { display: Uint8Array; mono: Uint8Array; monoBold: Uint8Array };
+  fonts: { display: Uint8Array; mono: Uint8Array; monoBold: Uint8Array; script: Uint8Array };
 }
 
 const mono = (text: string, size: number, color: string, extra: object = {}) =>
@@ -111,10 +111,17 @@ function certificatePage(
 
       Positioned({ h: "center", top: 318 }, Box({ width: textWidth }, [body])),
 
+      // Signature sits ON the rule, like a signed line; the printed name stays
+      // below it. Placeholder handwriting until the organizer sends a real one.
       Positioned(
         { bottom: 64, left: 96 },
         Column({ gap: 6 }, [
-          Box({ width: 200, borderBottom: C.muted, borderWidth: 0.8, height: 1 }, []),
+          Box({ relative: true, width: 200, borderBottom: C.muted, borderWidth: 0.8, height: 1 }, [
+            Positioned(
+              { h: "start", bottom: 4, left: 6 },
+              Text(signedBy, { font: "Caveat", size: 26, color: C.mint }),
+            ),
+          ]),
           mono(signedBy, 9, C.fg),
           mono("Organizer", 7.5, C.muted, { letterSpacing: 2 }),
         ]),
@@ -142,6 +149,7 @@ function finish(input: CertificateInput, kind: string, page: ReturnType<typeof P
     [page],
   );
   doc.addFont("Chakra Petch", fonts.display);
+  doc.addFont("Caveat", fonts.script);
   doc.addFont("JetBrains Mono", { normal: fonts.mono, bold: fonts.monoBold });
   return doc;
 }
