@@ -29,11 +29,23 @@ export function sendApi<T extends { meta: ApiMeta }>(event: H3Event, payload: T)
     etag,
   });
 
-  if (getRequestHeader(event, "if-none-match") === etag) {
+  if (etagMatches(getRequestHeader(event, "if-none-match"), etag)) {
     setResponseStatus(event, 304);
     return null;
   }
   return payload;
+}
+
+// RFC 9110 13.1.2: If-None-Match is a list, may be "*", and a GET compares
+// weakly. A CDN or proxy in front of us can forward several tags, so plain
+// equality would silently stop answering 304. The regex pulls out entity-tags
+// rather than splitting on commas, which a quoted tag may contain.
+function etagMatches(header: string | undefined, etag: string): boolean {
+  if (!header) return false;
+  if (header.trim() === "*") return true;
+  const weak = (tag: string) => tag.trim().replace(/^W\//, "");
+  const target = weak(etag);
+  return (header.match(/(?:W\/)?"(?:[^"\\]|\\.)*"/g) ?? []).some((t) => weak(t) === target);
 }
 
 export function apiMeta(phase: EventPhase): ApiMeta {
