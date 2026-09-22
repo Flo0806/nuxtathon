@@ -21,9 +21,7 @@
     "lihbr"
   ],
   "closeMarker": "nuxtathon closed",
-  "markerAuthors": [
-    "danielroe"
-  ],
+  "markerAuthors": ["danielroe"],
   "displayTimeZone": "UTC",
   "discordWebhookUrl": "",
   "discordAnnounce": false,
