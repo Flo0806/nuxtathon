@@ -132,6 +132,22 @@ backup of `.data/state/runtime` next to it. Deploy and let it start **before**
 touching Settings or `config/event.json`, since the migration takes the
 committed config as the one the archived event ran with.
 
+## Scoring
+
+By default every qualifying closed issue counts one point, plus manual credits,
+exactly as the first event was scored. The Settings tab (Event section) can turn
+on additional rules, which only ever add up, never multiply:
+
+```
+points per issue = base + age bonus + label bonuses + upvote bonus
+```
+
+Points per merged PR are added on top of the issues it closed, and manual
+credits are taken as given. The active rules are appended to the rules block on
+the start page automatically, so they are never written twice. The whole block
+locks the moment the event goes live, and it is frozen into the result on fire,
+so an archived event keeps the rules it was scored with.
+
 ## Archive
 
 Every fired event is kept and shown at `/archive` (linked from the start page
