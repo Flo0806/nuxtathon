@@ -127,7 +127,7 @@ useSeoMeta({
         :certificate-base="certificateBase"
       />
       <p class="font-mono text-[0.62rem] uppercase tracking-wider text-muted">
-        Every contributor has a certificate. Use the icon in their row.
+        Everyone with a score has a certificate. Use the icon in their row.
       </p>
       <p class="font-mono text-[0.62rem] uppercase tracking-wider text-muted">
         Finalized {{ new Date(event!.finalizedAt).toISOString().slice(0, 10) }}

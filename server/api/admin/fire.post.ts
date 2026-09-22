@@ -30,20 +30,28 @@ export default defineEventHandler(async () => {
     if (!bucket.issues.includes(c.issueNumber)) bucket.issues.push(c.issueNumber);
   }
 
-  // Seed the obvious prize so the awards tab does not start empty; the
-  // organizer renames or removes it.
-  const first = standings[0];
-  const awards: Award[] = first
-    ? [
-        {
-          id: randomUUID(),
-          login: first.login,
-          title: "Most issues closed",
-          text: `for closing ${first.score} ${first.score === 1 ? "issue" : "issues"} during the event`,
-          icon: "trophy",
-        },
-      ]
-    : [];
+  // Re-firing the same event (unfreeze, wait for late merges, fire again) must
+  // not throw away the prizes the organizer already handed out.
+  const previous = state.archive.find(
+    (a) => a.title === config.title && a.startsAt === config.startsAt,
+  );
+  // Seed the obvious prize so the awards tab does not start empty; the organizer
+  // renames or removes it. Only a scoring entry can hold an award, otherwise the
+  // awards editor and the certificate routes would reject it.
+  const first = standings.find((e) => e.score > 0);
+  const awards: Award[] = previous?.awards?.length
+    ? previous.awards
+    : first
+      ? [
+          {
+            id: randomUUID(),
+            login: first.login,
+            title: "Most issues closed",
+            text: `for closing ${first.score} ${first.score === 1 ? "issue" : "issues"} during the event`,
+            icon: "trophy",
+          },
+        ]
+      : [];
 
   const final: FinalResult = {
     finalizedAt: new Date().toISOString(),

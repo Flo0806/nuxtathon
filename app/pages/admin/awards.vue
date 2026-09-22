@@ -78,6 +78,8 @@ async function save() {
 const previewing = ref<number | null>(null);
 async function preview(i: number) {
   previewing.value = i;
+  // Opened before the await: a window.open after one is a popup, not a click.
+  const tab = window.open("", "_blank");
   try {
     const blob = await $fetch<Blob>("/api/admin/awards/preview", {
       method: "POST",
@@ -85,10 +87,15 @@ async function preview(i: number) {
       body: { slug: slug.value, award: awards.value[i] },
       responseType: "blob",
     });
+    if (!tab) {
+      toast.error("Popup blocked, allow popups for this site");
+      return;
+    }
     const url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
+    tab.location.href = url;
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   } catch (e) {
+    tab?.close();
     if (!auth.handle401(e)) toast.error(errMsg(e));
   } finally {
     previewing.value = null;
@@ -101,7 +108,7 @@ const { visible } = useAdminPage(load);
 <template>
   <div v-if="visible" class="flex flex-col gap-6">
     <p class="font-mono text-[0.72rem] leading-relaxed text-muted">
-      Prizes for a finished event. Everyone in the standings gets a participation certificate;
+      Prizes for a finished event. Everyone with a score gets a participation certificate;
       recipients listed here get an award certificate with the title, line and icon you choose.
     </p>
 
