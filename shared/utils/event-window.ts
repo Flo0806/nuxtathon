@@ -16,12 +16,12 @@ export function earliestStart(now: number = Date.now()): number {
 }
 
 // Settings keys the current phase forbids changing; "*" = everything. Live locks
-// the start and the cutoff (either would move the scoring under a running
-// event), evaluating locks the end as well.
+// the start, the cutoff and the point rules (each would move the scoring under a
+// running event), evaluating locks the end as well.
 export function lockedSettingsKeys(phase: EventPhase, frozen: boolean): string[] {
   if (frozen || phase === "results") return ["*"];
-  if (phase === "live") return ["startsAt", "qualifyingBefore"];
-  if (phase === "evaluating") return ["startsAt", "qualifyingBefore", "endsAt"];
+  if (phase === "live") return ["startsAt", "qualifyingBefore", "scoring"];
+  if (phase === "evaluating") return ["startsAt", "qualifyingBefore", "endsAt", "scoring"];
   return [];
 }
 export const isKeyLocked = (locked: readonly string[], key: string) =>

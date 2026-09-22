@@ -18,6 +18,7 @@ const configKey = async (event: H3Event): Promise<string> => {
         c.coreTeam,
         c.closeMarker,
         c.markerAuthors,
+        c.scoring,
       ]),
     )
     .digest("hex")
@@ -54,7 +55,11 @@ export default defineCachedEventHandler(
     // for an already-covered issue is dropped, not double-scored), then the
     // remaining manual issue numbers are folded in for the headline count.
     const closed = new Set(result.closedIssues);
-    const entries = applyCredits(result.entries, state.credits, closed);
+    const entries = applyCredits(result.entries, state.credits, closed, {
+      rules: config.scoring,
+      facts: result.issueFacts,
+      contributions: result.contributions,
+    });
     const contributions = { ...result.contributions };
 
     for (const c of state.credits) {

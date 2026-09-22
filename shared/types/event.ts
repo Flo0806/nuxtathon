@@ -1,3 +1,5 @@
+import type { ScoringRules } from "./scoring";
+
 // Static, committed event configuration (source: config/event.json).
 export interface EventConfig {
   title: string;
@@ -25,6 +27,9 @@ export interface EventConfig {
   // credits cannot be farmed by self-mentioning under any closed issue.
   // ORGANIZER_LOGIN is pinned in by resolveEventConfig regardless of settings.
   markerAuthors: string[];
+  // Point rules. Every rule off means one point per qualifying closed issue,
+  // which is how the first event was scored.
+  scoring: ScoringRules;
   // IANA zone used purely for rendering dates and the countdown. Not editable
   // via settings yet: UTC is mandatory until the admin forms handle zones.
   displayTimeZone: string;
@@ -49,6 +54,7 @@ export const MECHANICS_KEYS = [
   "coreTeam",
   "closeMarker",
   "markerAuthors",
+  "scoring",
 ] as const;
 // Editable in every phase, and left out of FinalResult.config (a webhook url is
 // a credential, not part of an event's record).

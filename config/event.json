@@ -20,8 +20,34 @@
     "lihbr"
   ],
   "closeMarker": "nuxtathon closed",
-  "markerAuthors": ["danielroe"],
+  "markerAuthors": [
+    "danielroe"
+  ],
   "displayTimeZone": "UTC",
   "discordWebhookUrl": "",
-  "discordAnnounce": false
+  "discordAnnounce": false,
+  "scoring": {
+    "issuePoints": {
+      "enabled": false,
+      "points": 1
+    },
+    "prPoints": {
+      "enabled": false,
+      "points": 1
+    },
+    "ageBonus": {
+      "enabled": false,
+      "afterMonths": 12,
+      "points": 1
+    },
+    "labelBonus": {
+      "enabled": false,
+      "points": {}
+    },
+    "upvoteBonus": {
+      "enabled": false,
+      "per": 25,
+      "points": 1
+    }
+  }
 }

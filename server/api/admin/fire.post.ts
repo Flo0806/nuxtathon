@@ -17,7 +17,11 @@ export default defineEventHandler(async () => {
   // first, then fold the remaining manual issue numbers into the frozen count so it
   // matches what was on screen.
   const closed = new Set(result.closedIssues);
-  const standings = applyCredits(result.entries, state.credits, closed);
+  const standings = applyCredits(result.entries, state.credits, closed, {
+    rules: config.scoring,
+    facts: result.issueFacts,
+    contributions: result.contributions,
+  });
   const contributions = { ...result.contributions };
 
   for (const c of state.credits) {

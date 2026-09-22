@@ -4,6 +4,7 @@ import type {
   EventStats,
   LeaderboardEntry,
 } from "#shared/types/event";
+import type { IssueFactsMap } from "#shared/types/scoring";
 
 interface PrAuthor {
   __typename: string;
@@ -18,11 +19,18 @@ interface ContributorUser {
   avatarUrl: string;
 }
 
+interface IssueRefNode {
+  number: number;
+  createdAt: string;
+  labels?: { nodes: { name: string }[] };
+  reactions?: { totalCount: number };
+}
+
 interface PrNode {
   number: number;
   mergedAt: string;
   author: PrAuthor | null;
-  closingIssuesReferences: { nodes: { number: number; createdAt: string }[] };
+  closingIssuesReferences: { nodes: IssueRefNode[] };
   // Commit authors carry co-authors (from Co-authored-by trailers, resolved to
   // GitHub accounts). `user` is null when the email is not linked to an account.
   commits: { nodes: { commit: { authors: { nodes: { user: ContributorUser | null }[] } } }[] };
@@ -65,6 +73,14 @@ const SEARCH_QUERY = `
             nodes {
               number
               createdAt
+              labels(first: 20) {
+                nodes {
+                  name
+                }
+              }
+              reactions(content: THUMBS_UP) {
+                totalCount
+              }
             }
           }
           commits(first: 50) {
@@ -390,6 +406,8 @@ export async function fetchLeaderboard(
   closedIssues: number[];
   // Per-login credited issue/PR numbers (deep-linking + reuse).
   contributions: ContributionIds;
+  // Age, labels and upvotes of every closed issue, for weighted scoring.
+  issueFacts: IssueFactsMap;
 }> {
   const from = window?.from ?? config.startsAt;
   const to = window?.to ?? config.endsAt;
@@ -406,8 +424,17 @@ export async function fetchLeaderboard(
   // issues opened mid-event (Daniel files a fresh bug, someone fixes it same day).
   const closedInWindow = new Set<number>();
 
+  const issueFacts: IssueFactsMap = {};
+
   for (const pr of prs) {
-    for (const ref of pr.closingIssuesReferences.nodes) closedInWindow.add(ref.number);
+    for (const ref of pr.closingIssuesReferences.nodes) {
+      closedInWindow.add(ref.number);
+      issueFacts[ref.number] = {
+        createdAt: ref.createdAt,
+        labels: (ref.labels?.nodes ?? []).map((l) => l.name),
+        upvotes: ref.reactions?.totalCount ?? 0,
+      };
+    }
     const qualifying = pr.closingIssuesReferences.nodes.filter(
       (issue) => Date.parse(issue.createdAt) < cutoff,
     );
@@ -513,5 +540,6 @@ export async function fetchLeaderboard(
     stats: { submitted, merged, issuesClosed },
     closedIssues: [...closedInWindow],
     contributions,
+    issueFacts,
   };
 }

@@ -55,7 +55,11 @@ export function pickSettings(input: EventSettings): EventSettings {
   for (const key of SETTINGS_KEYS) {
     const value = input[key];
     const fallback = eventConfig[key];
-    if (typeof fallback === "boolean") {
+    if (key === "scoring") {
+      // Object-valued; stored only when it actually differs from the default.
+      const merged = normalizeScoring(value as ScoringRules | undefined);
+      if (JSON.stringify(merged) !== JSON.stringify(eventConfig.scoring)) out.scoring = merged;
+    } else if (typeof fallback === "boolean") {
       if (typeof value === "boolean" && value !== fallback) {
         (out as Record<string, unknown>)[key] = value;
       }
@@ -80,5 +84,43 @@ export function archivableConfig(config: EventConfig): EventConfig {
     ...config,
     discordWebhookUrl: eventConfig.discordWebhookUrl,
     discordAnnounce: eventConfig.discordAnnounce,
+  };
+}
+
+// Keeps the stored block on the known shape: unknown keys are dropped, missing
+// ones fall back to the default, numbers are coerced. A hand-edited or outdated
+// settings file can then never break scoring.
+function normalizeScoring(input: ScoringRules | undefined): ScoringRules {
+  const d = eventConfig.scoring ?? DEFAULT_SCORING;
+  const num = (v: unknown, fallback: number) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
+  const on = (v: unknown) => v === true;
+  const i = input ?? d;
+  return {
+    issuePoints: {
+      enabled: on(i.issuePoints?.enabled),
+      points: num(i.issuePoints?.points, d.issuePoints.points),
+    },
+    prPoints: {
+      enabled: on(i.prPoints?.enabled),
+      points: num(i.prPoints?.points, d.prPoints.points),
+    },
+    ageBonus: {
+      enabled: on(i.ageBonus?.enabled),
+      afterMonths: num(i.ageBonus?.afterMonths, d.ageBonus.afterMonths),
+      points: num(i.ageBonus?.points, d.ageBonus.points),
+    },
+    labelBonus: {
+      enabled: on(i.labelBonus?.enabled),
+      points: Object.fromEntries(
+        Object.entries(i.labelBonus?.points ?? {})
+          .map(([k, v]) => [k.trim(), Number(v)])
+          .filter(([k, v]) => k && Number.isFinite(v as number)),
+      ) as Record<string, number>,
+    },
+    upvoteBonus: {
+      enabled: on(i.upvoteBonus?.enabled),
+      per: num(i.upvoteBonus?.per, d.upvoteBonus.per),
+      points: num(i.upvoteBonus?.points, d.upvoteBonus.points),
+    },
   };
 }

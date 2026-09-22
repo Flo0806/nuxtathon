@@ -2,6 +2,8 @@
 import { marked } from "marked";
 import type { EventSettings, SettingsKey } from "#shared/types/event";
 import { ORGANIZER_LOGIN, SETTINGS_KEYS } from "#shared/types/event";
+import type { ScoringRules } from "#shared/types/scoring";
+import { DEFAULT_SCORING } from "#shared/types/scoring";
 import { isKeyLocked, validateWindow } from "#shared/utils/event-window";
 
 definePageMeta({ layout: "admin" });
@@ -22,7 +24,7 @@ interface Payload {
 
 // Drives the form. New key = entry here + SETTINGS_KEYS.
 interface Field {
-  key: SettingsKey;
+  key: TextKey;
   group: "Content" | "Event" | "Integrations";
   label: string;
   help: string;
@@ -117,6 +119,9 @@ const FIELDS: Field[] = [
   },
 ];
 const GROUPS = ["Content", "Event", "Integrations"] as const;
+// Everything except `scoring`, which is an object and has its own editor below.
+type TextKey = Exclude<SettingsKey, "scoring">;
+const TEXT_KEYS = SETTINGS_KEYS.filter((k): k is TextKey => k !== "scoring");
 
 const toast = useToast();
 const auth = useAdminAuth();
@@ -127,42 +132,73 @@ const frozen = ref(false);
 const discordStatus = ref<DiscordStatus | null>(null);
 const testing = ref(false);
 // String form state; lists and datetimes are converted on load/save.
-const form = reactive(
-  Object.fromEntries(SETTINGS_KEYS.map((k) => [k, ""])) as Record<SettingsKey, string>,
-);
+const form = reactive(Object.fromEntries(TEXT_KEYS.map((k) => [k, ""])) as Record<TextKey, string>);
+// Point rules, edited as a real object. Label factors live in a row list
+// because an object is not directly editable in a form.
+const scoring = reactive<ScoringRules>(structuredClone(DEFAULT_SCORING));
+const labelRows = ref<{ label: string; points: number }[]>([]);
+const scoringLocked = computed(() => isKeyLocked(locked.value, "scoring"));
+
+// Worked example under the rules: an old, labelled, popular issue, computed
+// with whatever is currently in the form.
+const scoringExample = computed(() => {
+  const first = labelRows.value.find((r) => r.label.trim());
+  const base = scoring.issuePoints.enabled ? Number(scoring.issuePoints.points) || 0 : 1;
+  const parts = [`${base} base`];
+  let total = base;
+  if (scoring.ageBonus.enabled) {
+    const p = Number(scoring.ageBonus.points) || 0;
+    parts.push(`+${p} older than ${scoring.ageBonus.afterMonths} months`);
+    total += p;
+  }
+  if (scoring.labelBonus.enabled && first) {
+    const p = Number(first.points) || 0;
+    parts.push(`+${p} ${first.label.trim()}`);
+    total += p;
+  }
+  if (scoring.upvoteBonus.enabled) {
+    const per = Number(scoring.upvoteBonus.per) || 0;
+    const p = Number(scoring.upvoteBonus.points) || 0;
+    if (per > 0) {
+      parts.push(`+${p} for ${per} thumbs-up`);
+      total += p;
+    }
+  }
+  return `${parts.join("  ")}  =  ${Math.round(total * 100) / 100} points`;
+});
 const busy = ref(false);
 const loading = ref(false);
 
-const typeOf = (key: SettingsKey) => FIELDS.find((f) => f.key === key)?.type ?? "text";
+const typeOf = (key: TextKey) => FIELDS.find((f) => f.key === key)?.type ?? "text";
 const isLocked = (f: Field) => isKeyLocked(locked.value, f.key);
 
 const toLocal = (iso: string) => iso.slice(0, 16);
 const toIso = (local: string) => (local ? `${local}:00.000Z` : "");
 
-function toForm(key: SettingsKey, value: EventSettings[SettingsKey] | undefined): string {
+function toForm(key: TextKey, value: EventSettings[TextKey] | undefined): string {
   if (Array.isArray(value)) return value.join("\n");
   if (typeof value === "boolean") return value ? "1" : "";
   const v = value ?? "";
   return typeOf(key) === "datetime" ? toLocal(v) : v;
 }
-function fromForm(key: SettingsKey): string | string[] | boolean {
+function fromForm(key: TextKey): string | string[] | boolean {
   const v = form[key];
   if (typeOf(key) === "list") return v.split("\n");
   if (typeOf(key) === "datetime") return toIso(v);
   if (typeOf(key) === "toggle") return v === "1";
   return v;
 }
-function defaultOf(key: SettingsKey): string {
+function defaultOf(key: TextKey): string {
   return toForm(key, defaults.value[key]);
 }
 // Empty = default, same as the server.
-function effective(key: SettingsKey): string {
+function effective(key: TextKey): string {
   return form[key].trim() || defaultOf(key);
 }
-function isOverridden(key: SettingsKey): boolean {
+function isOverridden(key: TextKey): boolean {
   return form[key].trim() !== "" && form[key].trim() !== defaultOf(key);
 }
-function resetField(key: SettingsKey) {
+function resetField(key: TextKey) {
   form[key] = "";
 }
 
@@ -177,8 +213,7 @@ const windowErrors = computed(() =>
     locked.value,
   ),
 );
-const fieldError = (key: SettingsKey) =>
-  (windowErrors.value as Partial<Record<SettingsKey, string>>)[key];
+const fieldError = (key: TextKey) => (windowErrors.value as Partial<Record<TextKey, string>>)[key];
 const formValid = computed(() => Object.keys(windowErrors.value).length === 0);
 
 // Same renderer as the public page.
@@ -196,7 +231,15 @@ function apply(p: Payload) {
   locked.value = p.locked;
   frozen.value = p.frozen;
   discordStatus.value = p.discord;
-  for (const key of SETTINGS_KEYS) form[key] = toForm(key, p.settings[key]);
+  for (const key of TEXT_KEYS) form[key] = toForm(key, p.settings[key]);
+  Object.assign(
+    scoring,
+    structuredClone(p.settings.scoring ?? p.defaults.scoring ?? DEFAULT_SCORING),
+  );
+  labelRows.value = Object.entries(scoring.labelBonus.points).map(([label, points]) => ({
+    label,
+    points,
+  }));
 }
 
 async function load() {
@@ -211,9 +254,18 @@ async function load() {
 async function save() {
   busy.value = true;
   try {
-    const settings = Object.fromEntries(
-      SETTINGS_KEYS.map((k) => [k, fromForm(k)]),
-    ) as EventSettings;
+    const settings = Object.fromEntries(TEXT_KEYS.map((k) => [k, fromForm(k)])) as EventSettings;
+    settings.scoring = {
+      ...structuredClone(toRaw(scoring)),
+      labelBonus: {
+        enabled: scoring.labelBonus.enabled,
+        points: Object.fromEntries(
+          labelRows.value
+            .map((r) => [r.label.trim(), Number(r.points)] as const)
+            .filter(([label, points]) => label && Number.isFinite(points)),
+        ),
+      },
+    };
     const res = await $fetch<Payload>("/api/admin/settings", {
       method: "PUT",
       headers: auth.authHeaders(),
@@ -373,6 +425,171 @@ const { visible } = useAdminPage(load);
           Fixed to UTC for now; dates above and on the public page are UTC.
         </p>
         <input value="UTC" disabled class="input opacity-50" aria-label="display time zone" />
+      </div>
+
+      <div v-if="g === 'Event'" class="flex flex-col gap-4">
+        <div class="flex items-center gap-3">
+          <span class="font-mono text-sm uppercase tracking-wider text-fg">Point rules</span>
+          <span v-if="scoringLocked" class="text-[0.65rem] text-muted">
+            <span class="i-ph-lock inline-block align-[-2px]" aria-hidden="true" /> locked in this
+            phase
+          </span>
+        </div>
+        <p class="font-mono text-[0.72rem] leading-relaxed text-muted">
+          Everything adds up, nothing multiplies: an issue is worth its base points plus every bonus
+          that applies to it. All rules off means one point per qualifying closed issue plus manual
+          credits, which is how the first event was scored. Rules lock the moment the event starts.
+        </p>
+
+        <label class="panel flex flex-wrap items-center gap-3 px-4 py-3">
+          <input
+            v-model="scoring.issuePoints.enabled"
+            type="checkbox"
+            :disabled="scoringLocked"
+            class="h-4 w-4 accent-[var(--primary)]"
+          />
+          <span class="font-mono text-sm text-fg">Points per closed issue</span>
+          <input
+            v-model.number="scoring.issuePoints.points"
+            type="number"
+            step="0.5"
+            :disabled="scoringLocked || !scoring.issuePoints.enabled"
+            class="input w-24 disabled:opacity-40"
+            aria-label="points per issue"
+          />
+          <span class="font-mono text-[0.72rem] text-muted">default 1 when off</span>
+        </label>
+
+        <label class="panel flex flex-wrap items-center gap-3 px-4 py-3">
+          <input
+            v-model="scoring.prPoints.enabled"
+            type="checkbox"
+            :disabled="scoringLocked"
+            class="h-4 w-4 accent-[var(--primary)]"
+          />
+          <span class="font-mono text-sm text-fg">Points per merged PR</span>
+          <input
+            v-model.number="scoring.prPoints.points"
+            type="number"
+            step="0.5"
+            :disabled="scoringLocked || !scoring.prPoints.enabled"
+            class="input w-24 disabled:opacity-40"
+            aria-label="points per merged pr"
+          />
+          <span class="font-mono text-[0.72rem] text-muted">on top of the issues it closed</span>
+        </label>
+
+        <label class="panel flex flex-wrap items-center gap-3 px-4 py-3">
+          <input
+            v-model="scoring.ageBonus.enabled"
+            type="checkbox"
+            :disabled="scoringLocked"
+            class="h-4 w-4 accent-[var(--primary)]"
+          />
+          <span class="font-mono text-sm text-fg">Age bonus</span>
+          <span class="font-mono text-[0.72rem] text-muted">issues older than</span>
+          <input
+            v-model.number="scoring.ageBonus.afterMonths"
+            type="number"
+            min="1"
+            :disabled="scoringLocked || !scoring.ageBonus.enabled"
+            class="input w-20 disabled:opacity-40"
+            aria-label="months"
+          />
+          <span class="font-mono text-[0.72rem] text-muted">months add</span>
+          <input
+            v-model.number="scoring.ageBonus.points"
+            type="number"
+            step="0.5"
+            :disabled="scoringLocked || !scoring.ageBonus.enabled"
+            class="input w-20 disabled:opacity-40"
+            aria-label="bonus points"
+          />
+          <span class="font-mono text-[0.72rem] text-muted">points</span>
+        </label>
+
+        <div class="panel flex flex-col gap-3 px-4 py-3">
+          <label class="flex flex-wrap items-center gap-3">
+            <input
+              v-model="scoring.labelBonus.enabled"
+              type="checkbox"
+              :disabled="scoringLocked"
+              class="h-4 w-4 accent-[var(--primary)]"
+            />
+            <span class="font-mono text-sm text-fg">Label bonus</span>
+            <span class="font-mono text-[0.72rem] text-muted">
+              extra points per label, several labels add up
+            </span>
+          </label>
+          <div v-for="(row, i) in labelRows" :key="i" class="flex flex-wrap items-center gap-2">
+            <input
+              v-model="row.label"
+              placeholder="label, e.g. p4-important"
+              :disabled="scoringLocked || !scoring.labelBonus.enabled"
+              class="input min-w-48 flex-1 disabled:opacity-40"
+            />
+            <span class="font-mono text-[0.72rem] text-muted">adds</span>
+            <input
+              v-model.number="row.points"
+              type="number"
+              step="0.5"
+              :disabled="scoringLocked || !scoring.labelBonus.enabled"
+              class="input w-20 disabled:opacity-40"
+              aria-label="bonus points"
+            />
+            <span class="font-mono text-[0.72rem] text-muted">points</span>
+            <button
+              class="btn"
+              :disabled="scoringLocked || !scoring.labelBonus.enabled"
+              aria-label="remove label"
+              @click="labelRows.splice(i, 1)"
+            >
+              <span class="i-ph-x" aria-hidden="true" />
+            </button>
+          </div>
+          <button
+            class="btn self-start"
+            :disabled="scoringLocked || !scoring.labelBonus.enabled"
+            @click="labelRows.push({ label: '', points: 1 })"
+          >
+            <span class="i-ph-plus" aria-hidden="true" />
+            Add label
+          </button>
+        </div>
+
+        <label class="panel flex flex-wrap items-center gap-3 px-4 py-3">
+          <input
+            v-model="scoring.upvoteBonus.enabled"
+            type="checkbox"
+            :disabled="scoringLocked"
+            class="h-4 w-4 accent-[var(--primary)]"
+          />
+          <span class="font-mono text-sm text-fg">Upvote bonus</span>
+          <span class="font-mono text-[0.72rem] text-muted">every</span>
+          <input
+            v-model.number="scoring.upvoteBonus.per"
+            type="number"
+            min="1"
+            :disabled="scoringLocked || !scoring.upvoteBonus.enabled"
+            class="input w-20 disabled:opacity-40"
+            aria-label="upvotes per step"
+          />
+          <span class="font-mono text-[0.72rem] text-muted">thumbs-up adds</span>
+          <input
+            v-model.number="scoring.upvoteBonus.points"
+            type="number"
+            step="0.5"
+            :disabled="scoringLocked || !scoring.upvoteBonus.enabled"
+            class="input w-20 disabled:opacity-40"
+            aria-label="bonus points"
+          />
+          <span class="font-mono text-[0.72rem] text-muted">points</span>
+        </label>
+
+        <p class="panel px-4 py-3 font-mono text-[0.72rem] leading-relaxed text-mint">
+          <span class="text-muted">One issue that hits every active rule: </span>
+          {{ scoringExample }}
+        </p>
       </div>
 
       <div v-if="g === 'Integrations'" class="flex flex-wrap items-center gap-3">
