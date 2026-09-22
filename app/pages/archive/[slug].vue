@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { marked } from "marked";
+import { isDefaultScoring, scoringSummary } from "#shared/utils/scoring";
 import type { Award, EventConfig, FinalResult } from "#shared/types/event";
 
 const route = useRoute();
@@ -14,7 +15,12 @@ const config = computed(() => event.value!.config);
 const winner = computed(() => event.value!.standings[0] ?? null);
 // Archived config is admin-written Markdown, same trust as the live page.
 const description = computed(() => marked.parseInline(config.value.description) as string);
-const rules = computed(() => config.value.rules.map((r) => marked.parseInline(r) as string));
+const rules = computed(() => [
+  ...(config.value.showCustomRules === false
+    ? []
+    : config.value.rules.map((r) => marked.parseInline(r) as string)),
+  ...(isDefaultScoring(config.value.scoring) ? [] : scoringSummary(config.value.scoring)),
+]);
 const awards = computed<Award[]>(() => event.value!.awards ?? []);
 const standingFor = (login: string) =>
   event.value!.standings.find((e) => e.login.toLowerCase() === login.toLowerCase()) ?? null;
@@ -65,7 +71,7 @@ useSeoMeta({
       </li>
     </ul>
 
-    <WinnerReveal v-if="winner" :entry="winner" />
+    <WinnerReveal v-if="winner" :entry="winner" :rules="config.scoring" />
 
     <section v-if="awards.length" class="mx-auto flex w-full max-w-[42rem] flex-col gap-3">
       <h2 class="font-mono text-[0.7rem] uppercase tracking-[0.3em] text-amber">Awards</h2>

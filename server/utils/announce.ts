@@ -1,4 +1,5 @@
 import type { EventConfig, EventPhase, EventStats, LeaderboardEntry } from "#shared/types/event";
+import { scoreUnit } from "#shared/utils/scoring";
 import { ogFontFiles } from "./og-fonts";
 
 const NUXT_GREEN = 0x00dc82;
@@ -57,7 +58,7 @@ export function rankingEmbed(
   const rows = top.map((t, i) => {
     const who = `**[${t.name || t.login}](https://github.com/${t.login})**`;
     const move = t.move ? `  \`${t.move}\`` : "";
-    return `${MEDALS[i]}  ${who}  ·  ${t.score} ${t.score === 1 ? "issue" : "issues"}${move}`;
+    return `${MEDALS[i]}  ${who}  ·  ${scoreUnit(config.scoring, t.score)}${move}`;
   });
 
   return {
@@ -145,7 +146,7 @@ export async function announceFinal(
   const winner = entries[0];
   const rows = entries.slice(0, 3).map((e, i) => {
     const who = `**[${e.name || e.login}](https://github.com/${e.login})**`;
-    return `${MEDALS[i]}  ${who}  ·  ${e.score} ${e.score === 1 ? "issue" : "issues"}`;
+    return `${MEDALS[i]}  ${who}  ·  ${scoreUnit(config.scoring, e.score)}`;
   });
   const png = renderOgPng(await ogFontFiles(), ogTextFor(config, "results"));
 

@@ -6,6 +6,7 @@
     "All issues and PRs must target the core [`nuxt/nuxt`](https://github.com/nuxt/nuxt) repository.",
     "To count, an issue must have been created before 13 July."
   ],
+  "showCustomRules": true,
   "startsAt": "2026-07-18T00:00:00.000Z",
   "endsAt": "2026-07-19T23:59:59.999Z",
   "qualifyingBefore": "2026-07-14T00:00:00.000Z",

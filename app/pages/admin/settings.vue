@@ -55,10 +55,17 @@ const FIELDS: Field[] = [
     type: "markdown",
   },
   {
+    key: "showCustomRules",
+    group: "Content",
+    label: "Show the rules below",
+    help: "Off hides your own rule lines. The active point rules from the Event tab are always shown.",
+    type: "toggle",
+  },
+  {
     key: "rules",
     group: "Content",
-    label: "Rules",
-    help: "One rule per line, inline Markdown. Leave empty to hide the block.",
+    label: "Rules (optional)",
+    help: "Extra rules, one per line, inline Markdown. The active point rules from the Event tab are appended automatically, so do not repeat them here.",
     type: "list",
   },
   {
@@ -231,7 +238,12 @@ function apply(p: Payload) {
   locked.value = p.locked;
   frozen.value = p.frozen;
   discordStatus.value = p.discord;
-  for (const key of TEXT_KEYS) form[key] = toForm(key, p.settings[key]);
+  for (const key of TEXT_KEYS) {
+    // Text fields show the override and fall back to a placeholder; a checkbox
+    // has no placeholder, so it has to carry the effective value.
+    const value = typeOf(key) === "toggle" ? (p.settings[key] ?? p.defaults[key]) : p.settings[key];
+    form[key] = toForm(key, value);
+  }
   Object.assign(
     scoring,
     structuredClone(p.settings.scoring ?? p.defaults.scoring ?? DEFAULT_SCORING),

@@ -7,9 +7,13 @@ export interface EventConfig {
   eyebrow: string;
   // Markdown. Rendered on the public site.
   description: string;
-  // Short qualification rules shown under the intro (Markdown, inline). Empty
-  // hides the block, so this doubles as the on/off flag.
+  // Short qualification rules shown under the intro (Markdown, inline). The
+  // active point rules are appended to these on the site.
   rules: string[];
+  // Hides the hand-written `rules` above. Needed because an empty list falls
+  // back to the committed default, so there is no other way to drop them. The
+  // generated point rules are never affected.
+  showCustomRules: boolean;
   // Absolute UTC instants. Timezone is a display concern only (see displayTimeZone).
   startsAt: string;
   endsAt: string;
@@ -43,7 +47,13 @@ export interface EventConfig {
 export const ORGANIZER_LOGIN = "danielroe";
 
 // Texts the admin may override at any time.
-export const CONTENT_KEYS = ["title", "eyebrow", "description", "rules"] as const;
+export const CONTENT_KEYS = [
+  "title",
+  "eyebrow",
+  "description",
+  "rules",
+  "showCustomRules",
+] as const;
 // Scoring-relevant keys. Editable only while the event is upcoming; once it
 // has started (or is frozen) the server refuses changes so the ranking cannot
 // be moved under the contributors' feet.

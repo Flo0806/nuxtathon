@@ -84,3 +84,10 @@ export function scoringSummary(rules: ScoringRules): string[] {
   if (rules.prPoints.enabled) out.push(`Every merged PR adds ${pts(rules.prPoints.points)}.`);
   return out;
 }
+
+// "7 issues" while the default rules apply, "7 points" once any rule is on:
+// with bonuses the score stops being a count of anything.
+export function scoreUnit(rules: ScoringRules | undefined, value: number): string {
+  const noun = !rules || isDefaultScoring(rules) ? "issue" : "point";
+  return `${value} ${value === 1 ? noun : `${noun}s`}`;
+}

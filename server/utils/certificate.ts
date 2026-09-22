@@ -1,5 +1,6 @@
 import { Box, Column, Document, Image, Page, Positioned, Row, Svg, Text } from "@jasy/pdf";
 import type { Award, EventConfig, LeaderboardEntry } from "#shared/types/event";
+import { isDefaultScoring, scoreUnit } from "#shared/utils/scoring";
 import { formatWindow } from "./og-image";
 
 // Certificate palette, same tokens as the site.
@@ -156,10 +157,13 @@ function finish(input: CertificateInput, kind: string, page: ReturnType<typeof P
 
 export function participationCertificate(input: CertificateInput) {
   const { config, entry, totalContributors } = input;
-  const count = entry.score;
+  // With bonus rules on, the score is points, not a count of issues.
+  const achievement = isDefaultScoring(config.scoring)
+    ? `closed ${scoreUnit(config.scoring, entry.score)} in nuxt/nuxt`
+    : `scored ${scoreUnit(config.scoring, entry.score)} closing ${entry.closedIssues} ${entry.closedIssues === 1 ? "issue" : "issues"} in nuxt/nuxt`;
   const body = Column({ gap: 8, align: "center" }, [
     mono(
-      `took part in ${config.title} ${config.eyebrow}, the Nuxt community hackathon, and closed ${count} ${count === 1 ? "issue" : "issues"} in nuxt/nuxt during ${formatWindow(config)}.`,
+      `took part in ${config.title} ${config.eyebrow}, the Nuxt community hackathon, and ${achievement} during ${formatWindow(config)}.`,
       11,
       C.fg,
       { align: "center", lineHeight: 1.5 },
