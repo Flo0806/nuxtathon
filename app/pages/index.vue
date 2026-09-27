@@ -115,6 +115,18 @@ const dateRange = computed(() => {
         </NuxtLink>
       </div>
 
+      <!-- Only worth showing while there is something to pick up: once the
+           window is over, the list is a museum. -->
+      <NuxtLink
+        v-if="store.phase === 'upcoming' || store.phase === 'live'"
+        to="/issues"
+        class="btn border-primary text-primary shadow-[0_0_24px_rgba(0,220,130,0.25)] hover:(bg-primary/10 shadow-[0_0_32px_rgba(0,220,130,0.4)]) animate-fade-up motion-reduce:animate-none"
+      >
+        <span class="i-ph-list-checks text-[1.1rem]" aria-hidden="true" />
+        Flo's list: pick an issue to work on
+        <span class="i-ph-arrow-right" aria-hidden="true" />
+      </NuxtLink>
+
       <section v-if="showLeaderboard" class="mx-auto flex w-full max-w-[42rem] flex-col gap-4">
         <LeaderboardStats :stats="store.stats" />
         <LeaderboardList

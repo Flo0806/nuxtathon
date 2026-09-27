@@ -27,6 +27,43 @@ body {
   min-height: 100dvh;
 }
 
+/* Checkbox in the terminal style. The native box disappears against the dark
+   surface and its accent colour is honoured inconsistently, so it is drawn here
+   rather than tinted. */
+.check {
+  @apply relative h-5 w-5 shrink-0 cursor-pointer appearance-none rounded-sm transition-colors;
+  /* `--line` is the hairline used between rows; on a panel it reads as no box at
+     all, so the empty state borrows the brighter `--muted` and sits on the page
+     background to stand out from whatever surface it is placed on. */
+  border: 2px solid var(--muted);
+  background: var(--base);
+}
+.check:hover:not(:disabled) {
+  @apply border-primary;
+}
+.check:checked {
+  @apply border-primary bg-primary;
+}
+.check:checked::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 5px;
+  height: 10px;
+  /* White, not the base colour: a dark tick on the green fill was close to
+     invisible at this size. */
+  border: solid #fff;
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg);
+}
+.check:focus-visible {
+  @apply outline outline-1 outline-offset-1 outline-primary;
+}
+.check:disabled {
+  @apply cursor-not-allowed opacity-40;
+}
+
 ::selection {
   background: theme("colors.primary");
   color: theme("colors.base");

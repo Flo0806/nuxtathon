@@ -197,7 +197,7 @@ const { visible } = useAdminPage(loadAll);
   <div v-if="visible" class="flex flex-col gap-6">
     <span
       v-if="loading || busy"
-      class="i-ph-spinner animate-spin text-base text-primary"
+      class="i-ph-spinner animate-spin text-[1rem] text-primary"
       aria-label="working"
     />
 
@@ -396,7 +396,7 @@ const { visible } = useAdminPage(loadAll);
         <label
           class="inline-flex cursor-pointer items-center gap-3 font-mono text-[0.72rem] uppercase tracking-wider text-muted"
         >
-          <input v-model="start.announce" type="checkbox" class="h-4 w-4 accent-[var(--primary)]" />
+          <input v-model="start.announce" type="checkbox" class="check" />
           Announce on Discord
         </label>
 

@@ -168,6 +168,14 @@ async function post<T>(token: string, query: string, variables: object): Promise
   }
 }
 
+// A plain query for callers outside this module. Same error mapping, and it
+// tolerates partial data: GitHub answers an unknown issue with an error plus a
+// null field, which must not fail the whole lookup.
+export async function githubQuery<T>(token: string, query: string): Promise<T> {
+  const res = await post<{ data?: T }>(token, query, {});
+  return (res?.data ?? {}) as T;
+}
+
 async function graphql(token: string, query: string, variables: object): Promise<unknown> {
   const res = await post<{ data?: unknown; errors?: unknown }>(token, query, variables);
   if (res.errors || !res.data) {
