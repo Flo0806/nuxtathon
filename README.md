@@ -30,6 +30,12 @@ and AI co-author attributions such as `claude`) and the core team listed in
 `coreTeam`. Core team contributions are still tallied and archived, just kept out
 of the prize ranking.
 
+Alongside the ranking the board shows **community upvotes**: the thumbs-up
+across every issue closed during the event, i.e. how often people had asked for
+these fixes. Reactions come from the queries that already fetch the issues, so
+the counter costs no extra requests except for issues that only a manual credit
+brought in.
+
 Score = one point per qualifying closed issue plus manual credits (see Admin).
 Optional rules add points for merged PRs, issue age, labels and thumbs-up; see
 [Scoring](#scoring). The board shows the merged-PR count as a secondary stat,

@@ -139,6 +139,10 @@ export interface EventStats {
   submitted: number;
   merged: number;
   issuesClosed: number;
+  // Thumbs-up across every closed issue: how often the community had asked for
+  // these fixes. Optional because results archived before it existed have none,
+  // and showing a zero there would be a lie.
+  upvotes?: number;
 }
 
 // One frozen ranking order, retained so the client can replay recent reshuffles

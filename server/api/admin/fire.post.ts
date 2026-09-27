@@ -65,7 +65,11 @@ export default defineEventHandler(async () => {
     endsAt: config.endsAt,
     config: archivableConfig(config),
     awards,
-    stats: { ...result.stats, issuesClosed: closed.size },
+    stats: {
+      ...result.stats,
+      issuesClosed: closed.size,
+      upvotes: await totalUpvotes(token, closed, result.issueFacts),
+    },
     standings,
     coreTeam: result.coreTeam,
     contributions,

@@ -72,7 +72,11 @@ export default defineCachedEventHandler(
       if (!bucket.issues.includes(c.issueNumber)) bucket.issues.push(c.issueNumber);
     }
 
-    const stats = { ...result.stats, issuesClosed: closed.size };
+    const stats = {
+      ...result.stats,
+      issuesClosed: closed.size,
+      upvotes: await totalUpvotes(token, closed, result.issueFacts),
+    };
 
     await appendSnapshot(
       entries.map((entry) => entry.login),

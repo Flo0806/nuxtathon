@@ -55,8 +55,8 @@ body {
     linear-gradient(theme("colors.line") 1px, transparent 1px),
     linear-gradient(90deg, theme("colors.line") 1px, transparent 1px);
   background-size: 44px 44px;
-  opacity: 0.06;
-  mask-image: radial-gradient(ellipse at 50% 30%, black 40%, transparent 78%);
+  opacity: 0.1;
+  mask-image: radial-gradient(ellipse at 50% 30%, black 48%, transparent 85%);
 }
 
 /* Phosphor vignette: green core light plus darkened corners for CRT depth. */
