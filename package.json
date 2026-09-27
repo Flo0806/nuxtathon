@@ -1,6 +1,6 @@
 {
   "name": "nuxtathon",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "description": "Live leaderboard for Nuxtathon, the Nuxt community hackathon.",
   "keywords": [
