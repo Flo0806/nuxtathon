@@ -108,6 +108,6 @@ export function apiLimit(value: unknown, fallback: number, max = 500): number {
 // Phase without pulling the ranking: the small endpoints only need the clock.
 export async function currentPhase(): Promise<EventPhase> {
   const state = await readRuntimeState();
-  const config = state.final?.config ?? (await resolveEventConfig());
+  const config = await servedConfig();
   return resolvePhase(config, state.prizesReleased);
 }
