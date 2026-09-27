@@ -388,7 +388,7 @@ const { visible } = useAdminPage(load);
             type="checkbox"
             :checked="form[f.key] === '1'"
             :disabled="isLocked(f)"
-            class="h-4 w-4 accent-[var(--primary)]"
+            class="check"
             @change="form[f.key] = ($event.target as HTMLInputElement).checked ? '1' : ''"
           />
           {{ form[f.key] === "1" ? "on" : "off" }}
@@ -503,7 +503,7 @@ const { visible } = useAdminPage(load);
             v-model="scoring.issuePoints.enabled"
             type="checkbox"
             :disabled="scoringLocked"
-            class="h-4 w-4 accent-[var(--primary)]"
+            class="check"
           />
           <span class="font-mono text-sm text-fg">Points per closed issue</span>
           <input
@@ -522,7 +522,7 @@ const { visible } = useAdminPage(load);
             v-model="scoring.prPoints.enabled"
             type="checkbox"
             :disabled="scoringLocked"
-            class="h-4 w-4 accent-[var(--primary)]"
+            class="check"
           />
           <span class="font-mono text-sm text-fg">Points per merged PR</span>
           <input
@@ -541,7 +541,7 @@ const { visible } = useAdminPage(load);
             v-model="scoring.ageBonus.enabled"
             type="checkbox"
             :disabled="scoringLocked"
-            class="h-4 w-4 accent-[var(--primary)]"
+            class="check"
           />
           <span class="font-mono text-sm text-fg">Age bonus</span>
           <span class="font-mono text-[0.72rem] text-muted">issues older than</span>
@@ -571,7 +571,7 @@ const { visible } = useAdminPage(load);
               v-model="scoring.labelBonus.enabled"
               type="checkbox"
               :disabled="scoringLocked"
-              class="h-4 w-4 accent-[var(--primary)]"
+              class="check"
             />
             <span class="font-mono text-sm text-fg">Label bonus</span>
             <span class="font-mono text-[0.72rem] text-muted">
@@ -619,7 +619,7 @@ const { visible } = useAdminPage(load);
             v-model="scoring.upvoteBonus.enabled"
             type="checkbox"
             :disabled="scoringLocked"
-            class="h-4 w-4 accent-[var(--primary)]"
+            class="check"
           />
           <span class="font-mono text-sm text-fg">Upvote bonus</span>
           <span class="font-mono text-[0.72rem] text-muted">every</span>

@@ -86,7 +86,7 @@ useSeoMeta({
           aria-hidden="true"
         />
         <div class="min-w-0 flex-1">
-          <p class="font-display text-base font-bold uppercase tracking-wide text-mint">
+          <p class="font-display text-[1rem] font-bold uppercase tracking-wide text-mint">
             {{ a.title }}
           </p>
           <p class="mt-0.5 flex items-center gap-2 font-mono text-[0.75rem] text-fg">

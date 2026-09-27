@@ -178,6 +178,19 @@ placeholders the server expands, so no date is ever maintained by hand:
 per request, so a burst of clicks costs no extra GitHub calls, and it redirects
 to the search page rather than failing when GitHub is unavailable.
 
+## Flo's list
+
+`/issues`, behind the GitHub login: every open issue that still qualifies on the
+left, the ones you chose to follow on the right. A star moves an issue between
+them; watching is private and reserves nothing, which is deliberate, the event
+rules have no reservations.
+
+The board is one cached search for the whole repo, so it costs the same whether
+one person or a hundred are looking. The page refetches every five minutes while
+it is open. An issue you watch lights up when GitHub touched it after you
+started watching it (or after your last "mark as seen"), and a watched issue
+that gets closed stays in the right column, struck through, until you clear it.
+
 ## Archive
 
 Every fired event is kept and shown at `/archive` (linked from the start page

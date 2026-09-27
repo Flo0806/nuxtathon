@@ -168,6 +168,31 @@ async function post<T>(token: string, query: string, variables: object): Promise
   }
 }
 
+interface GraphqlError {
+  type?: string;
+  message?: string;
+}
+
+// A batched query for callers outside this module. A missing alias is expected
+// (GitHub answers NOT_FOUND plus a null field) and stays non-fatal, but anything
+// else, rate limits above all, is raised: swallowing it would turn an outage
+// into a silently empty result.
+export async function githubQuery<T>(token: string, query: string): Promise<T> {
+  const res = await post<{ data?: T; errors?: GraphqlError[] }>(token, query, {});
+  const fatal = (res?.errors ?? []).filter((e) => e?.type !== "NOT_FOUND");
+  if (fatal.length > 0) {
+    throw createError({
+      statusCode: 502,
+      statusMessage: `GitHub GraphQL error: ${fatal[0]?.type ?? fatal[0]?.message ?? "unknown"}`,
+      data: fatal,
+    });
+  }
+  if (!res?.data) {
+    throw createError({ statusCode: 502, statusMessage: "GitHub returned no data" });
+  }
+  return res.data;
+}
+
 async function graphql(token: string, query: string, variables: object): Promise<unknown> {
   const res = await post<{ data?: unknown; errors?: unknown }>(token, query, variables);
   if (res.errors || !res.data) {
