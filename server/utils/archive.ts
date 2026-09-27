@@ -35,6 +35,15 @@ export const archivedConfig = (r: FinalResult): EventConfig => ({
   showCustomRules: r.config?.showCustomRules ?? eventConfig.showCustomRules ?? true,
 });
 
+// The config to serve right now: a fired event shows the one it ran with, and it
+// must go through archivedConfig rather than being read raw. Results archived
+// before a field existed carry nothing for it, and handing that to the page
+// crashed the render (scoring was undefined after the v0.6 migration).
+export async function servedConfig(): Promise<EventConfig> {
+  const state = await readRuntimeState();
+  return state.final ? archivedConfig(state.final) : resolveEventConfig();
+}
+
 export function summarize(r: FinalResult, slug: string): ArchiveSummary {
   const config = archivedConfig(r);
   const winner = r.standings[0];

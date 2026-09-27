@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     const state = await readRuntimeState();
-    const config = state.final?.config ?? (await resolveEventConfig());
+    const config = await servedConfig();
     const phase = resolvePhase(config, state.prizesReleased);
     const text = ogTextFor(config, phase);
     const key = `og:${ogHash(text)}`;

@@ -28,7 +28,7 @@ export async function currentEvent(): Promise<{
   released: boolean;
 }> {
   const state = await readRuntimeState();
-  const config = state.final?.config ?? (await resolveEventConfig());
+  const config = await servedConfig();
   const phase = resolvePhase(config, state.prizesReleased);
   const board = await $fetch<Board>("/api/leaderboard");
   return {
