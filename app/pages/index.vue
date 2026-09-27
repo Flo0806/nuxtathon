@@ -99,22 +99,15 @@ const dateRange = computed(() => {
         class="flex flex-wrap items-center justify-center gap-3 animate-fade-up motion-reduce:animate-none"
       >
         <a
-          href="https://github.com/nuxt/nuxt/issues?q=sort%3Aupdated-desc%20is%3Aissue%20state%3Aopen%20created%3A%3C2026-07-13"
+          v-for="link in store.config.links"
+          :key="link.url"
+          :href="link.url"
           target="_blank"
           rel="noopener noreferrer"
           class="btn"
         >
-          <span class="i-simple-icons-github" aria-hidden="true" />
-          Browse open issues
-        </a>
-        <a
-          href="https://discord.gg/3Uxq7qFJF"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="btn"
-        >
-          <span class="i-simple-icons-discord" aria-hidden="true" />
-          Join the Discord
+          <span :class="link.icon" aria-hidden="true" />
+          {{ link.label }}
         </a>
         <NuxtLink v-if="store.archiveCount" to="/archive" class="btn">
           <span class="i-ph-trophy" aria-hidden="true" />

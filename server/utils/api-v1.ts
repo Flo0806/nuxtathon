@@ -7,7 +7,7 @@ import type { EventPhase, LeaderboardEntry } from "#shared/types/event";
 // learn anything new before that.
 const DATA_MAX_AGE = 300;
 
-export const apiSiteUrl = () => useRuntimeConfig().public.siteUrl || "https://nuxtathon.live";
+export const apiSiteUrl = () => publicSiteUrl();
 
 // Public, cross-origin, cacheable. The ETag covers the payload plus the phase,
 // but not the timestamps: `generatedAt` moves on every request, while a phase

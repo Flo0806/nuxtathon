@@ -157,6 +157,21 @@ the start page automatically, so they are never written twice. The whole block
 locks the moment the event goes live, and it is frozen into the result on fire,
 so an archived event keeps the rules it was scored with.
 
+## Buttons under the intro
+
+The row of buttons is config, not markup: `links` is a list of
+`{ label, url, icon }`, editable in Settings (Content). Two urls are
+placeholders the server expands, so no date is ever maintained by hand:
+
+| Placeholder | Expands to                                                                                                                           |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `{issues}`  | the GitHub search for open issues that still qualify, derived from `qualifyingBefore`                                                |
+| `{random}`  | `/api/pick-issue`, which redirects to a random issue nobody has started (no linked PR, no assignee). `?scope=all` drops that filter. |
+
+`/api/pick-issue` keeps a pool of candidates for five minutes and picks from it
+per request, so a burst of clicks costs no extra GitHub calls, and it redirects
+to the search page rather than failing when GitHub is unavailable.
+
 ## Archive
 
 Every fired event is kept and shown at `/archive` (linked from the start page
@@ -185,14 +200,14 @@ missed ranking post is retried on the next recompute.
 Read-only JSON at `/api/v1`, CORS-open so another site (nuxt.com, a dashboard,
 a bot) can pull the event without scraping. `GET /api/v1` lists every endpoint.
 
-| Endpoint                 | What it answers                                                                                                                      |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `/api/v1/summary`        | Everything a teaser needs in one request: title, window, stats, top 3, winner. `?top=N` widens the list.                             |
-| `/api/v1/event`          | The current event in full: description (Markdown and plain), rule lines, point rules as structured data, issue cutoff, core team.    |
-| `/api/v1/leaderboard`    | The whole ranking plus the core team. `?limit=N` trims it, `?include=contributions` adds the issue and PR numbers behind each score. |
-| `/api/v1/archive`        | Every finished event with its winner and award count.                                                                                |
-| `/api/v1/archive/{slug}` | One finished event: standings, awards, and ready-made certificate URLs.                                                              |
-| `/api/v1/users/{login}`  | One contributor across all finished events, with totals and awards. `?logins=a,b,c` returns several.                                 |
+| Endpoint                 | What it answers                                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/api/v1/summary`        | Everything a teaser needs in one request: title, window, stats, top 3, winner. `?top=N` widens the list.                                   |
+| `/api/v1/event`          | The current event in full: description (Markdown and plain), rule lines, buttons, point rules as structured data, issue cutoff, core team. |
+| `/api/v1/leaderboard`    | The whole ranking plus the core team. `?limit=N` trims it, `?include=contributions` adds the issue and PR numbers behind each score.       |
+| `/api/v1/archive`        | Every finished event with its winner and award count.                                                                                      |
+| `/api/v1/archive/{slug}` | One finished event: standings, awards, and ready-made certificate URLs.                                                                    |
+| `/api/v1/users/{login}`  | One contributor across all finished events, with totals and awards. `?logins=a,b,c` returns several.                                       |
 
 Every response in the table above carries a `meta` block (`generatedAt`,
 `nextUpdateAt`, `phase`); the `/api/v1` index answers with `version`, `docs` and
