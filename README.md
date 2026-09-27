@@ -102,6 +102,14 @@ Visit `/admin/nuxtathon` and log in with the env credentials. Actions:
 - **Manual credits**: add points to a contributor for an issue closed without a
   PR, for example a non-reproducible issue you close and credit the reporter. The
   standings preview updates live; Save persists.
+- **Close marker**: the same credit, but from GitHub. A comment by an authorized
+  organizer ("nuxtathon closed @user") on a closed issue credits that user. It
+  counts when both the comment and the close fall between the event start and
+  the moment you fire, so closing the last issues during `evaluating` still
+  scores, while a marker left during an earlier Nuxtathon never applies again. A
+  new marker reaches the server with the next recompute, at most five minutes
+  later, and an already open page adds its own two-minute poll on top. **Refresh**
+  makes it immediate.
 - **Archive**: past finalized events, downloadable as JSON per event or all at
   once. Each entry carries the full config it ran with.
 

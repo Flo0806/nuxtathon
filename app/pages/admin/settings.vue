@@ -100,7 +100,7 @@ const FIELDS: Field[] = [
     key: "closeMarker",
     group: "Event",
     label: "Close marker",
-    help: "Comment keyword that credits a PR-less close. Empty disables it.",
+    help: "Comment keyword that credits a PR-less close. Both the comment and the close must fall between the event start and the moment you fire, so late closes during evaluation still count while markers from an earlier event never do. Empty disables it.",
     type: "text",
   },
   {

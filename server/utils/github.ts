@@ -283,6 +283,7 @@ const MARKER_QUERY = `
           comments(last: 20) {
             nodes {
               body
+              createdAt
               author {
                 login
               }
@@ -297,14 +298,17 @@ const MARKER_QUERY = `
 interface MarkerPage {
   pageInfo: { endCursor: string | null; hasNextPage: boolean };
   nodes: (Partial<IssueRefNode> & {
-    comments?: { nodes: { body: string; author: { login: string } | null }[] };
+    comments?: {
+      nodes: { body: string; createdAt: string; author: { login: string } | null }[];
+    };
   })[];
 }
 
 // Issues closed in the window carrying a credit marker in a comment from an
 // authorized organizer. The automated twin of a manual credit: only trusted
 // authors are honored, so nobody farms points by self-mentioning under a random
-// closed issue. Returns one entry per marked issue with its credited logins.
+// closed issue. Both the close and the marker comment must fall inside the
+// window. Returns one entry per marked issue with its credited logins.
 async function fetchMarkerCredits(
   token: string,
   from: string,
@@ -313,6 +317,8 @@ async function fetchMarkerCredits(
   authors: Set<string>,
 ): Promise<{ issueNumber: number; logins: string[]; facts: IssueFacts }[]> {
   const search = `${REPO} is:issue is:closed closed:${toGithubStamp(from)}..${toGithubStamp(to)}`;
+  const fromMs = Date.parse(from);
+  const toMs = Date.parse(to);
   const out: { issueNumber: number; logins: string[]; facts: IssueFacts }[] = [];
   let after: string | null = null;
 
@@ -325,6 +331,11 @@ async function fetchMarkerCredits(
       const logins = new Set<string>();
       for (const comment of issue.comments?.nodes ?? []) {
         if (!comment.author || !authors.has(comment.author.login.toLowerCase())) continue;
+        // The marker has to be written during this event. Without this a comment
+        // from an earlier Nuxtathon would count again whenever its issue is
+        // reopened and closed a second time.
+        const at = Date.parse(comment.createdAt);
+        if (!Number.isFinite(at) || at < fromMs || at > toMs) continue;
         for (const login of parseCreditedLogins(comment.body, keyword)) logins.add(login);
       }
       if (logins.size > 0) {
@@ -484,10 +495,16 @@ export async function fetchLeaderboard(
   // Organizer-marked closes: issues resolved without a PR that Daniel credits via
   // a comment ("nuxtathon closed @user"). Authorized authors only, and any issue a
   // PR already closed is skipped so neither the count nor the credit doubles up.
+  //
+  // The window runs to *now*, not to `endsAt`: marking happens by hand, and the
+  // evaluating phase exists precisely to work through what is left. Firing ends
+  // it without a stored cutoff, because a fired event is served from its frozen
+  // result and never recomputed.
   const markerAuthors = new Set((config.markerAuthors ?? []).map((l) => l.toLowerCase()));
+  const markerTo = window?.to ?? new Date().toISOString();
   const markers =
     config.closeMarker && markerAuthors.size > 0
-      ? await fetchMarkerCredits(token, from, to, config.closeMarker, markerAuthors)
+      ? await fetchMarkerCredits(token, from, markerTo, config.closeMarker, markerAuthors)
       : [];
 
   // Marker-credited logins (which carry no name) awaiting a GitHub lookup.
