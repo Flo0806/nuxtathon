@@ -203,6 +203,51 @@ export async function validateIssues(
   return { valid, invalid };
 }
 
+// Thumbs-up across a set of closed issues. Those a query already covered are
+// summed from their facts; only what a manual credit pulled in costs a request.
+// A failure there degrades to the partial sum: this counter is decoration, and
+// losing the whole board over it would be the wrong trade.
+export async function totalUpvotes(
+  token: string,
+  closed: Iterable<number>,
+  facts: IssueFactsMap,
+): Promise<number> {
+  let sum = 0;
+  const missing: number[] = [];
+  for (const n of closed) {
+    const f = facts[n];
+    if (f) sum += f.upvotes;
+    else missing.push(n);
+  }
+  if (missing.length === 0) return sum;
+  try {
+    return sum + (await fetchIssueUpvotes(token, missing));
+  } catch (e) {
+    console.error("[upvotes] batched lookup failed, reporting the partial sum:", e);
+    return sum;
+  }
+}
+
+// One batched request with an alias per number, like validateIssues. Bounded
+// because the alias list goes into the query text.
+async function fetchIssueUpvotes(token: string, numbers: number[]): Promise<number> {
+  const unique = [...new Set(numbers.filter((n) => Number.isInteger(n) && n > 0))].slice(0, 100);
+  if (unique.length === 0) return 0;
+
+  const fields = unique
+    .map((n) => `i${n}: issue(number: ${n}) { reactions(content: THUMBS_UP) { totalCount } }`)
+    .join("\n");
+  const query = `query { repository(owner: "nuxt", name: "nuxt") { ${fields} } }`;
+  const res = await post<{
+    data?: { repository?: Record<string, { reactions?: { totalCount: number } } | null> | null };
+  }>(token, query, {});
+  const repo = res?.data?.repository ?? null;
+
+  let sum = 0;
+  for (const n of unique) sum += repo?.[`i${n}`]?.reactions?.totalCount ?? 0;
+  return sum;
+}
+
 // Timestamped form GitHub search accepts in `merged:from..to`, pinning the window
 // to the second instead of relying on day granularity.
 function toGithubStamp(iso: string): string {
@@ -555,6 +600,10 @@ export async function fetchLeaderboard(
   const coreTeam = rank([...coreByLogin.values()].map(toEntry));
 
   const issuesClosed = closedInWindow.size;
+  // Community demand behind the closed issues. Every issue here came from a
+  // query that already selected its reactions, so this costs nothing extra.
+  let upvotes = 0;
+  for (const n of closedInWindow) upvotes += issueFacts[n]?.upvotes ?? 0;
   const merged = prs.filter((pr) => isHuman(pr.author)).length;
   const submitted = await countHumanPrs(
     token,
@@ -574,7 +623,7 @@ export async function fetchLeaderboard(
   return {
     entries,
     coreTeam,
-    stats: { submitted, merged, issuesClosed },
+    stats: { submitted, merged, issuesClosed, upvotes },
     closedIssues: [...closedInWindow],
     contributions,
     issueFacts,
