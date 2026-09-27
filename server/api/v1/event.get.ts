@@ -21,6 +21,7 @@ export default defineEventHandler(async (event) => {
         ...(config.showCustomRules === false ? [] : config.rules),
         ...(isDefaultScoring(config.scoring) ? [] : scoringSummary(config.scoring)),
       ],
+      links: absoluteLinks(config.links, site),
       qualifyingBefore: config.qualifyingBefore,
       coreTeam: config.coreTeam,
       scoring: config.scoring,

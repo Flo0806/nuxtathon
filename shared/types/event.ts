@@ -10,6 +10,8 @@ export interface EventConfig {
   // Short qualification rules shown under the intro (Markdown, inline). The
   // active point rules are appended to these on the site.
   rules: string[];
+  // Buttons under the intro. Empty hides the row.
+  links: EventLink[];
   // Hides the hand-written `rules` above. Needed because an empty list falls
   // back to the committed default, so there is no other way to drop them. The
   // generated point rules are never affected.
@@ -44,6 +46,35 @@ export interface EventConfig {
   discordAnnounce: boolean;
 }
 
+// Curated icons a link may carry. Rendered via UnoCSS, so they are safelisted
+// in uno.config.ts; a free-text name would not survive the scanner.
+export const LINK_ICONS = [
+  "i-simple-icons-github",
+  "i-simple-icons-discord",
+  "i-simple-icons-bluesky",
+  "i-simple-icons-mastodon",
+  "i-simple-icons-x",
+  "i-ph-shuffle",
+  "i-ph-globe",
+  "i-ph-book-open",
+  "i-ph-chat-circle",
+  "i-ph-calendar-blank",
+  "i-ph-megaphone",
+] as const;
+export type LinkIcon = (typeof LINK_ICONS)[number];
+
+// A button under the intro. `url` may be a placeholder that the server expands
+// ("{issues}" for the GitHub search of issues that still qualify, "{random}" for
+// the random-issue redirect), so the cutoff date is never maintained by hand.
+export interface EventLink {
+  label: string;
+  url: string;
+  icon: LinkIcon;
+}
+export const ISSUES_PLACEHOLDER = "{issues}";
+// Expands to the endpoint that redirects to a random issue nobody has started.
+export const RANDOM_PLACEHOLDER = "{random}";
+
 // Always part of coreTeam and markerAuthors, whatever the settings say.
 export const ORGANIZER_LOGIN = "danielroe";
 
@@ -54,6 +85,7 @@ export const CONTENT_KEYS = [
   "description",
   "rules",
   "showCustomRules",
+  "links",
 ] as const;
 // Scoring-relevant keys. Editable only while the event is upcoming; once it
 // has started (or is frozen) the server refuses changes so the ranking cannot

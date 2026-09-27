@@ -31,6 +31,7 @@ export const archivedConfig = (r: FinalResult): EventConfig => ({
   // Results fired before these fields existed carry neither, and an older result
   // may carry an older scoring shape, so it is normalized rather than trusted.
   scoring: normalizeScoringRules(r.config?.scoring, eventConfig.scoring ?? DEFAULT_SCORING),
+  links: expandLinks({ ...eventConfig, ...r.config } as EventConfig),
   showCustomRules: r.config?.showCustomRules ?? eventConfig.showCustomRules ?? true,
 });
 

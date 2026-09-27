@@ -1,4 +1,4 @@
-import type { Award, EventPhase, EventStats } from "./event";
+import type { Award, EventLink, EventPhase, EventStats } from "./event";
 import type { ScoringRules } from "./scoring";
 
 // Public API v1. Additive only: fields may be added, never removed or retyped.
@@ -66,6 +66,8 @@ export interface ApiEvent {
     descriptionText: string;
     // Rendered rule lines, hand-written ones first, point rules appended.
     rules: string[];
+    // Buttons the site shows, with absolute urls.
+    links: EventLink[];
     qualifyingBefore: string;
     coreTeam: string[];
     scoring: ScoringRules;

@@ -2,6 +2,8 @@
 import { marked } from "marked";
 import type { EventSettings, SettingsKey } from "#shared/types/event";
 import { ORGANIZER_LOGIN, SETTINGS_KEYS } from "#shared/types/event";
+import type { EventLink } from "#shared/types/event";
+import { ISSUES_PLACEHOLDER, LINK_ICONS } from "#shared/types/event";
 import type { ScoringRules } from "#shared/types/scoring";
 import { DEFAULT_SCORING } from "#shared/types/scoring";
 import { isKeyLocked, validateWindow } from "#shared/utils/event-window";
@@ -127,8 +129,8 @@ const FIELDS: Field[] = [
 ];
 const GROUPS = ["Content", "Event", "Integrations"] as const;
 // Everything except `scoring`, which is an object and has its own editor below.
-type TextKey = Exclude<SettingsKey, "scoring">;
-const TEXT_KEYS = SETTINGS_KEYS.filter((k): k is TextKey => k !== "scoring");
+type TextKey = Exclude<SettingsKey, "scoring" | "links">;
+const TEXT_KEYS = SETTINGS_KEYS.filter((k): k is TextKey => k !== "scoring" && k !== "links");
 
 const toast = useToast();
 const auth = useAdminAuth();
@@ -144,6 +146,9 @@ const form = reactive(Object.fromEntries(TEXT_KEYS.map((k) => [k, ""])) as Recor
 // because an object is not directly editable in a form.
 const scoring = reactive<ScoringRules>(structuredClone(DEFAULT_SCORING));
 const labelRows = ref<{ label: string; points: number }[]>([]);
+// Buttons under the intro. The issues link keeps its placeholder here; the
+// server expands it, so the cutoff date is never typed in.
+const links = ref<EventLink[]>([]);
 const scoringLocked = computed(() => isKeyLocked(locked.value, "scoring"));
 
 // Worked example under the rules: an old, labelled, popular issue, computed
@@ -252,6 +257,7 @@ function apply(p: Payload) {
     label,
     points,
   }));
+  links.value = (p.settings.links ?? p.defaults.links ?? []).map((l) => ({ ...l }));
 }
 
 async function load() {
@@ -267,6 +273,9 @@ async function save() {
   busy.value = true;
   try {
     const settings = Object.fromEntries(TEXT_KEYS.map((k) => [k, fromForm(k)])) as EventSettings;
+    settings.links = links.value
+      .map((l) => ({ ...l, label: l.label.trim(), url: l.url.trim() }))
+      .filter((l) => l.label && l.url);
     settings.scoring = {
       ...structuredClone(toRaw(scoring)),
       labelBonus: {
@@ -429,6 +438,42 @@ const { visible } = useAdminPage(load);
             <span v-html="r" />
           </li>
         </ul>
+      </div>
+
+      <div v-if="g === 'Content'" class="flex flex-col gap-3">
+        <span class="font-mono text-sm uppercase tracking-wider text-fg">Buttons</span>
+        <p class="font-mono text-[0.72rem] leading-relaxed text-muted">
+          Shown under the intro, in this order. Use
+          <code class="text-primary">{{ ISSUES_PLACEHOLDER }}</code> as the url for the "browse open
+          issues" button: it is replaced with the search for issues that still qualify, so the
+          cutoff date never has to be typed in.
+        </p>
+        <div
+          v-for="(link, i) in links"
+          :key="i"
+          class="panel flex flex-wrap items-center gap-2 px-3 py-2"
+        >
+          <input v-model="link.label" placeholder="label" class="input w-44" />
+          <input
+            v-model="link.url"
+            :placeholder="ISSUES_PLACEHOLDER"
+            class="input min-w-56 flex-1"
+          />
+          <select v-model="link.icon" class="input w-48" aria-label="icon">
+            <option v-for="ic in LINK_ICONS" :key="ic" :value="ic">{{ ic }}</option>
+          </select>
+          <span :class="link.icon" class="text-lg text-primary" aria-hidden="true" />
+          <button class="btn" aria-label="remove button" @click="links.splice(i, 1)">
+            <span class="i-ph-x" aria-hidden="true" />
+          </button>
+        </div>
+        <button
+          class="btn self-start"
+          @click="links.push({ label: '', url: '', icon: 'i-ph-globe' })"
+        >
+          <span class="i-ph-plus" aria-hidden="true" />
+          Add button
+        </button>
       </div>
 
       <div v-if="g === 'Event'" class="flex flex-col gap-2">

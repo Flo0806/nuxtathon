@@ -8,14 +8,15 @@ import {
   transformerDirectives,
   transformerVariantGroup,
 } from "unocss";
-import { AWARD_ICONS } from "./shared/types/event";
+import { AWARD_ICONS, LINK_ICONS } from "./shared/types/event";
 
 // "Nuxt Hacker" design system. Palette is derived from the official Nuxt logo
 // (primary green + mint) dropped onto a green-tinted phosphor black, with a
 // single amber accent reserved for urgency (countdown, evaluation, lightning).
 export default defineConfig({
   // Award icons are chosen at runtime, so the scanner cannot see their classes.
-  safelist: AWARD_ICONS.map((i) => `i-ph-${i}-fill`),
+  // Award and link icons are picked at runtime, so the scanner cannot see them.
+  safelist: [...AWARD_ICONS.map((i) => `i-ph-${i}-fill`), ...LINK_ICONS],
   presets: [
     presetWind3(),
     presetAttributify(),

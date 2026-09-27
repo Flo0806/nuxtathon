@@ -27,6 +27,7 @@ export async function resolveEventConfig(): Promise<EventConfig> {
     ...merged,
     coreTeam: withOrganizer(merged.coreTeam),
     markerAuthors: withOrganizer(merged.markerAuthors),
+    links: expandLinks(merged),
   };
 }
 
@@ -56,7 +57,14 @@ export function pickSettings(input: EventSettings): EventSettings {
   for (const key of SETTINGS_KEYS) {
     const value = input[key];
     const fallback = eventConfig[key];
-    if (key === "scoring") {
+    if (key === "links") {
+      // Only an actual array is an override. Treating a missing value as an
+      // empty list would store "no buttons" for an admin who never touched them.
+      if (Array.isArray(value)) {
+        const links = normalizeLinks(value);
+        if (JSON.stringify(links) !== JSON.stringify(eventConfig.links)) out.links = links;
+      }
+    } else if (key === "scoring") {
       // Object-valued; stored only when it actually differs from the default.
       const merged = normalizeScoringRules(value as ScoringRules | undefined, eventConfig.scoring);
       if (JSON.stringify(merged) !== JSON.stringify(eventConfig.scoring)) out.scoring = merged;

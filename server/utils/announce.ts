@@ -12,7 +12,7 @@ export async function configureDiscord(): Promise<void> {
   await discord.configure(discordWebhookUrl ? { webhookUrl: discordWebhookUrl } : undefined);
 }
 
-export const siteUrl = () => useRuntimeConfig().public.siteUrl || "https://nuxtathon.live";
+export const siteUrl = publicSiteUrl;
 
 export const BOT_IDENTITY = () => ({
   username: "Nuxtathon",
