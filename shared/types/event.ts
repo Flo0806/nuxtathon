@@ -25,7 +25,9 @@ export interface EventConfig {
   coreTeam: string[];
   // Comment marker that lets an organizer credit a PR-less close, e.g. a comment
   // "nuxtathon closed @user". Keyword is matched case-insensitively; empty
-  // disables the feature. Only comments by markerAuthors are honored.
+  // disables the feature. Only comments by markerAuthors are honored, and the
+  // marker counts from the start until the event is fired, not just inside the
+  // event window.
   closeMarker: string;
   // Logins allowed to post the marker. Keep this tight (organizers only) so
   // credits cannot be farmed by self-mentioning under any closed issue.
