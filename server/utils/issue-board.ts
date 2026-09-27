@@ -186,3 +186,24 @@ export async function readWatch(login: string): Promise<WatchState> {
 export async function writeWatch(login: string, state: WatchState): Promise<void> {
   await useStorage("state").setItem(watchKey(login), state);
 }
+
+// Read-modify-write per login. Two requests from the same person (a double
+// click, or a toggle racing "mark as seen") would otherwise each read the old
+// state and the later write would drop the other's change.
+const locks = new Map<string, Promise<unknown>>();
+export function withWatchLock<T>(login: string, task: () => Promise<T>): Promise<T> {
+  const key = login.toLowerCase();
+  const previous = locks.get(key) ?? Promise.resolve();
+  const run = previous.then(task, task);
+  // Keep the chain alive but never let a rejection poison the next caller, and
+  // drop the entry once this user is idle again.
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  locks.set(key, settled);
+  void settled.then(() => {
+    if (locks.get(key) === settled) locks.delete(key);
+  });
+  return run;
+}

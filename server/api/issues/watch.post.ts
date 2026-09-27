@@ -8,23 +8,25 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 422, statusMessage: "Not an issue number" });
   }
 
-  const state = await readWatch(user.login);
-  const watching = state.watching.filter((n) => n !== number);
-  const seen = { ...state.seen };
-  if (body?.watch === false) {
-    delete seen[String(number)];
-  } else {
-    if (watching.length >= MAX_WATCHED) {
-      throw createError({
-        statusCode: 422,
-        statusMessage: `The watch list holds at most ${MAX_WATCHED} issues`,
-      });
+  return withWatchLock(user.login, async () => {
+    const state = await readWatch(user.login);
+    const watching = state.watching.filter((n) => n !== number);
+    const seen = { ...state.seen };
+    if (body?.watch === false) {
+      delete seen[String(number)];
+    } else {
+      if (watching.length >= MAX_WATCHED) {
+        throw createError({
+          statusCode: 422,
+          statusMessage: `The watch list holds at most ${MAX_WATCHED} issues`,
+        });
+      }
+      // Newest first, so a long list stays useful without sorting in the client.
+      watching.unshift(number);
+      // Acknowledged as of now: what happened before you cared is not news.
+      seen[String(number)] = new Date().toISOString();
     }
-    // Newest first, so a long list stays useful without sorting in the client.
-    watching.unshift(number);
-    // Acknowledged as of now: what happened before you cared is not news.
-    seen[String(number)] = new Date().toISOString();
-  }
-  await writeWatch(user.login, { watching, seen });
-  return { watching, seen };
+    await writeWatch(user.login, { watching, seen });
+    return { watching, seen };
+  });
 });

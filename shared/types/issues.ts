@@ -14,14 +14,20 @@ export interface BoardIssue {
   assignee: string | null;
   // A pull request references this issue, so someone is likely on it already.
   hasPr: boolean;
-  // Only ever true in the watch column: the open list is filtered to open issues,
-  // but a watched one that got closed is still worth showing once.
+  // Only set on `watchedExtra` entries, where it is the reason they left the
+  // open list.
   closed?: boolean;
 }
 
 export interface IssueBoard {
   fetchedAt: string;
+  // Exactly what the open search returned. The left column shows this and
+  // nothing else.
   issues: BoardIssue[];
+  // Watched issues the open search no longer returns, fetched one by one so the
+  // watch column can still show their outcome. Kept apart rather than mixed in,
+  // so membership is never inferred from a flag.
+  watchedExtra: BoardIssue[];
   // Issue numbers this user is watching, newest first.
   watching: number[];
   // Issue number -> when this user last acknowledged it. Anything GitHub touched

@@ -5,12 +5,19 @@ const { loggedIn } = useUserSession();
 
 const board = ref<IssueBoard | null>(null);
 const busy = ref(false);
+const error = ref("");
+// Bumped whenever the watch state is about to change. A poll that started before
+// that must not apply its now stale `watching`/`seen` on top of the newer one.
+const watchRevision = ref(0);
 const query = ref("");
 const sort = ref<"age" | "upvotes" | "updated">("age");
 const hidePr = ref(false);
 
 async function load() {
-  board.value = await $fetch<IssueBoard>("/api/issues");
+  const revision = watchRevision.value;
+  const next = await $fetch<IssueBoard>("/api/issues");
+  if (revision !== watchRevision.value) return;
+  board.value = next;
 }
 
 const watching = computed(() => new Set(board.value?.watching ?? []));
@@ -22,8 +29,7 @@ const isNew = (i: BoardIssue) => {
 };
 
 const sorted = computed(() => {
-  // Closed entries ride along only for the watch column.
-  const all = (board.value?.issues ?? []).filter((i) => !i.closed);
+  const all = board.value?.issues ?? [];
   const term = query.value.trim().toLowerCase();
   const filtered = all.filter((i) => {
     if (hidePr.value && i.hasPr) return false;
@@ -42,7 +48,12 @@ const sorted = computed(() => {
 // except that anything closed floats to the top: it is the outcome you waited
 // for, and the row is only there so you can see it and clear it.
 const watched = computed(() => {
-  const byNumber = new Map((board.value?.issues ?? []).map((i) => [i.number, i]));
+  const byNumber = new Map(
+    [...(board.value?.issues ?? []), ...(board.value?.watchedExtra ?? [])].map((i) => [
+      i.number,
+      i,
+    ]),
+  );
   const rows = (board.value?.watching ?? []).flatMap((n) => {
     const issue = byNumber.get(n);
     return issue ? [issue] : [];
@@ -51,9 +62,16 @@ const watched = computed(() => {
 });
 const freshCount = computed(() => watched.value.filter(isNew).length);
 
+function errorText(e: unknown): string {
+  const err = e as { data?: { statusMessage?: string }; statusMessage?: string };
+  return err?.data?.statusMessage || err?.statusMessage || "That did not work, try again.";
+}
+
 async function toggle(issue: BoardIssue) {
   if (!board.value || busy.value) return;
   busy.value = true;
+  error.value = "";
+  watchRevision.value++;
   const watch = !watching.value.has(issue.number);
   try {
     const res = await $fetch<{ watching: number[]; seen: Record<string, string> }>(
@@ -62,6 +80,10 @@ async function toggle(issue: BoardIssue) {
     );
     board.value.watching = res.watching;
     board.value.seen = res.seen;
+  } catch (e) {
+    // The list cap and a lost session both land here; silence would look like a
+    // dead button.
+    error.value = errorText(e);
   } finally {
     busy.value = false;
   }
@@ -69,10 +91,16 @@ async function toggle(issue: BoardIssue) {
 
 async function markSeen() {
   if (!board.value) return;
-  const res = await $fetch<{ seen: Record<string, string> }>("/api/issues/seen", {
-    method: "POST",
-  });
-  board.value.seen = res.seen;
+  error.value = "";
+  watchRevision.value++;
+  try {
+    const res = await $fetch<{ seen: Record<string, string> }>("/api/issues/seen", {
+      method: "POST",
+    });
+    board.value.seen = res.seen;
+  } catch (e) {
+    error.value = errorText(e);
+  }
 }
 
 const age = (iso: string) => {
@@ -165,6 +193,10 @@ useSeoMeta({ title: "Nuxtathon - Issue list", robots: "noindex" });
           Mark {{ freshCount }} as seen
         </button>
       </div>
+
+      <p v-if="error" class="panel px-4 py-2 font-mono text-[0.72rem] text-red-400" role="alert">
+        {{ error }}
+      </p>
 
       <div class="grid gap-6 lg:grid-cols-[3fr_2fr]">
         <section class="flex min-w-0 flex-col gap-2">

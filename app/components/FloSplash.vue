@@ -24,19 +24,21 @@ onBeforeUnmount(() => clearTimeout(timer));
 
 <template>
   <div class="splash" :class="{ landed }">
-    <img
-      :key="run"
-      src="/flo.png"
-      alt="Play the intro again"
-      width="512"
-      height="512"
-      class="mascot"
-      :class="{ landed }"
-      role="button"
-      tabindex="0"
-      @click="play(true)"
-      @keydown.enter.space.prevent="play(true)"
-    />
+    <!-- The button stays mounted so keyboard focus survives a replay; only the
+         image is keyed, which is what restarts the CSS animation. -->
+    <button type="button" class="trigger" :class="{ landed }" @click="play(true)">
+      <span class="sr-only">Play the intro again</span>
+      <img
+        :key="run"
+        src="/flo.png"
+        alt=""
+        width="512"
+        height="512"
+        class="mascot"
+        :class="{ landed }"
+        aria-hidden="true"
+      />
+    </button>
   </div>
 </template>
 
@@ -50,13 +52,28 @@ onBeforeUnmount(() => clearTimeout(timer));
   place-items: center;
   pointer-events: none;
 }
-/* Only the landed icon is clickable; the flying one must not eat clicks. */
-.splash.landed {
-  pointer-events: auto;
-}
 .splash.landed {
   position: static;
   display: block;
+  /* Only the landed icon is clickable; the flying one must not eat clicks. */
+  pointer-events: auto;
+}
+
+.trigger {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  line-height: 0;
+  cursor: default;
+}
+.trigger.landed {
+  cursor: pointer;
+}
+.trigger:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: 50%;
 }
 
 .mascot {
@@ -74,7 +91,6 @@ onBeforeUnmount(() => clearTimeout(timer));
 .mascot.landed {
   width: 3.25rem;
   height: 3.25rem;
-  cursor: pointer;
   box-shadow: 0 0 14px rgba(0, 220, 130, 0.35);
   /* The size change alone reads as the flight, because the element moves from
      the centred overlay into the header in the same frame. */
@@ -105,10 +121,13 @@ onBeforeUnmount(() => clearTimeout(timer));
     position: static;
     display: block;
   }
-  .mascot {
+  .mascot,
+  .mascot.landed {
     width: 3.25rem;
     height: 3.25rem;
     animation: none;
+    /* Repeated for the landed state: it is more specific, so without this its
+       own transition would still animate the shadow. */
     transition: none;
   }
 }

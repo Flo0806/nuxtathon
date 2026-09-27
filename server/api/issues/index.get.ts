@@ -16,7 +16,7 @@ export default defineEventHandler(async (event): Promise<IssueBoard> => {
   // the watch column instead of the row silently disappearing.
   const open = new Set(issues.map((i) => i.number));
   const gone = watching.filter((n) => !open.has(n));
-  const closed = gone.length > 0 ? await fetchClosedWatched(token, gone).catch(() => []) : [];
+  const watchedExtra = gone.length > 0 ? await fetchClosedWatched(token, gone).catch(() => []) : [];
 
-  return { fetchedAt: new Date().toISOString(), issues: [...issues, ...closed], watching, seen };
+  return { fetchedAt: new Date().toISOString(), issues, watchedExtra, watching, seen };
 });
