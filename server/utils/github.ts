@@ -5,6 +5,7 @@ import type {
   LeaderboardEntry,
 } from "#shared/types/event";
 import type { IssueRef } from "#shared/types/issue-ref";
+import type { EventScope } from "#shared/types/scope";
 import type { IssueFacts, IssueFactsMap } from "#shared/types/scoring";
 import { HOME_REPO, issueRef, splitIssueRef } from "#shared/utils/issue-ref";
 
@@ -32,6 +33,7 @@ interface IssueRefNode {
 interface PrNode {
   number: number;
   repository?: { nameWithOwner: string };
+  createdAt: string;
   mergedAt: string;
   author: PrAuthor | null;
   closingIssuesReferences: { nodes: IssueRefNode[] };
@@ -68,19 +70,15 @@ const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 const MAX_PAGES = 10;
 const REPO = "repo:nuxt/nuxt";
 
-const SEARCH_QUERY = `
-  query ($search: String!, $after: String) {
-    search(query: $search, type: ISSUE, first: 100, after: $after) {
-      pageInfo {
-        endCursor
-        hasNextPage
-      }
-      nodes {
+// Everything scoring needs from one PR. Shared by the paged search and the
+// aliased first pages in searchPrsAcross.
+const PR_FIELDS = `
         ... on PullRequest {
           number
           repository {
             nameWithOwner
           }
+          createdAt
           mergedAt
           author {
             __typename
@@ -123,6 +121,17 @@ const SEARCH_QUERY = `
             }
           }
         }
+`;
+
+const SEARCH_QUERY = `
+  query ($search: String!, $after: String) {
+    search(query: $search, type: ISSUE, first: 100, after: $after) {
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      nodes {
+        ${PR_FIELDS}
       }
     }
   }
@@ -334,6 +343,87 @@ async function fetchEventPrs(token: string, from: string, to: string): Promise<P
     after = result.pageInfo.endCursor;
   }
   return prs;
+}
+
+// Merged PRs across every org and repo of a scope. One search per entry rather
+// than one OR-ed query: GitHub caps a query at 256 characters and five
+// operators, which a longer repo list would hit. First pages go out as aliases,
+// a few per request, because one page can pull ~90k nodes (commits x authors,
+// closing refs x labels) against GitHub's 500k limit per request. A repo listed
+// on its own and inside a listed org is found twice; PRs are deduped by ref.
+const ALIASES_PER_REQUEST = 3;
+
+export function scopeSearches(scope: EventScope, qualifiers: string): string[] {
+  return [...scope.orgs.map((o) => `org:${o}`), ...scope.repos.map((r) => `repo:${r}`)].map(
+    (target) => `${target} ${qualifiers}`,
+  );
+}
+
+async function searchPrsAcross(
+  token: string,
+  searches: string[],
+): Promise<{ prs: PrNode[]; counts: { search: string; count: number }[] }> {
+  const byRef = new Map<IssueRef, PrNode>();
+  const counts: { search: string; count: number }[] = [];
+  for (let i = 0; i < searches.length; i += ALIASES_PER_REQUEST) {
+    const chunk = searches.slice(i, i + ALIASES_PER_REQUEST);
+    const aliases = chunk.map(
+      (q, j) => `s${j}: search(query: ${JSON.stringify(q)}, type: ISSUE, first: 100) {
+        issueCount
+        pageInfo { endCursor hasNextPage }
+        nodes { ${PR_FIELDS} }
+      }`,
+    );
+    const data = (await graphql(token, `query { ${aliases.join("\n")} }`, {})) as Record<
+      string,
+      SearchPage & { issueCount: number }
+    >;
+    for (const [j, q] of chunk.entries()) {
+      const first = data[`s${j}`];
+      if (!first) continue;
+      counts.push({ search: q, count: first.issueCount });
+      const nodes = [...first.nodes];
+      let after = first.pageInfo.hasNextPage ? first.pageInfo.endCursor : null;
+      for (let page = 1; after && page < MAX_PAGES; page++) {
+        const { search: next } = (await graphql(token, SEARCH_QUERY, { search: q, after })) as {
+          search: SearchPage;
+        };
+        nodes.push(...next.nodes);
+        after = next.pageInfo.hasNextPage ? next.pageInfo.endCursor : null;
+      }
+      for (const pr of nodes) {
+        const ref = typeof pr.number === "number" ? refOf(pr) : null;
+        if (ref) byRef.set(ref, pr);
+      }
+    }
+  }
+  return { prs: [...byRef.values()], counts };
+}
+
+// Admin debug view (step 10 of the multi-repo plan): what the scope finds for a
+// window, before any of it reaches the board.
+export async function scopeCheck(token: string, scope: EventScope, from: string, to: string) {
+  const searches = scopeSearches(
+    scope,
+    `is:pr is:merged created:${toGithubStamp(from)}..${toGithubStamp(to)}`,
+  );
+  const { prs, counts } = await searchPrsAcross(token, searches);
+  return {
+    searches: counts,
+    prs: prs
+      .map((pr) => ({
+        ref: refOf(pr)!,
+        author: pr.author?.login ?? "ghost",
+        bot: !isHuman(pr.author),
+        createdAt: pr.createdAt,
+        mergedAt: pr.mergedAt,
+        closes: pr.closingIssuesReferences.nodes.flatMap((n) => {
+          const ref = refOf(n);
+          return ref ? [{ ref, createdAt: n.createdAt }] : [];
+        }),
+      }))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+  };
 }
 
 // Human-authored PR count for a search, excluding bots (renovate, dependabot).
