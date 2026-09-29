@@ -35,6 +35,7 @@ interface PrNode {
   repository?: { nameWithOwner: string };
   createdAt: string;
   mergedAt: string;
+  labels?: { nodes: { name: string }[] };
   author: PrAuthor | null;
   closingIssuesReferences: { nodes: IssueRefNode[] };
   // Commit authors carry co-authors (from Co-authored-by trailers, resolved to
@@ -70,8 +71,7 @@ const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 const MAX_PAGES = 10;
 const REPO = "repo:nuxt/nuxt";
 
-// Everything scoring needs from one PR. Shared by the paged search and the
-// aliased first pages in searchPrsAcross.
+// Everything scoring needs from one PR.
 const PR_FIELDS = `
         ... on PullRequest {
           number
@@ -80,6 +80,11 @@ const PR_FIELDS = `
           }
           createdAt
           mergedAt
+          labels(first: 20) {
+            nodes {
+              name
+            }
+          }
           author {
             __typename
             login
@@ -126,6 +131,7 @@ const PR_FIELDS = `
 const SEARCH_QUERY = `
   query ($search: String!, $after: String) {
     search(query: $search, type: ISSUE, first: 100, after: $after) {
+      issueCount
       pageInfo {
         endCursor
         hasNextPage
@@ -347,14 +353,15 @@ async function fetchEventPrs(token: string, from: string, to: string): Promise<P
 
 // Merged PRs across every org and repo of a scope. One search per entry rather
 // than one OR-ed query: GitHub caps a query at 256 characters and five
-// operators, which a longer repo list would hit. First pages go out as aliases,
-// a few per request, because one page can pull ~90k nodes (commits x authors,
-// closing refs x labels) against GitHub's 500k limit per request. A repo listed
-// on its own and inside a listed org is found twice; PRs are deduped by ref.
-const ALIASES_PER_REQUEST = 3;
-
+// operators, which a longer repo list would hit. They run one after another, not
+// as aliases in one request: a page of PRs with commits, co-authors and closing
+// issues takes GitHub several seconds, and two of them together came close to
+// its ~10 s timeout (measured 8.4 s, and one 502).
 export function scopeSearches(scope: EventScope, qualifiers: string): string[] {
-  return [...scope.orgs.map((o) => `org:${o}`), ...scope.repos.map((r) => `repo:${r}`)].map(
+  const orgs = new Set(scope.orgs);
+  // A repo inside a listed org is already covered by the org search.
+  const repos = scope.repos.filter((r) => !orgs.has(r.slice(0, r.indexOf("/"))));
+  return [...scope.orgs.map((o) => `org:${o}`), ...repos.map((r) => `repo:${r}`)].map(
     (target) => `${target} ${qualifiers}`,
   );
 }
@@ -365,62 +372,98 @@ async function searchPrsAcross(
 ): Promise<{ prs: PrNode[]; counts: { search: string; count: number }[] }> {
   const byRef = new Map<IssueRef, PrNode>();
   const counts: { search: string; count: number }[] = [];
-  for (let i = 0; i < searches.length; i += ALIASES_PER_REQUEST) {
-    const chunk = searches.slice(i, i + ALIASES_PER_REQUEST);
-    const aliases = chunk.map(
-      (q, j) => `s${j}: search(query: ${JSON.stringify(q)}, type: ISSUE, first: 100) {
-        issueCount
-        pageInfo { endCursor hasNextPage }
-        nodes { ${PR_FIELDS} }
-      }`,
-    );
-    const data = (await graphql(token, `query { ${aliases.join("\n")} }`, {})) as Record<
-      string,
-      SearchPage & { issueCount: number }
-    >;
-    for (const [j, q] of chunk.entries()) {
-      const first = data[`s${j}`];
-      if (!first) continue;
-      counts.push({ search: q, count: first.issueCount });
-      const nodes = [...first.nodes];
-      let after = first.pageInfo.hasNextPage ? first.pageInfo.endCursor : null;
-      for (let page = 1; after && page < MAX_PAGES; page++) {
-        const { search: next } = (await graphql(token, SEARCH_QUERY, { search: q, after })) as {
-          search: SearchPage;
-        };
-        nodes.push(...next.nodes);
-        after = next.pageInfo.hasNextPage ? next.pageInfo.endCursor : null;
-      }
-      for (const pr of nodes) {
+  for (const search of searches) {
+    let count = 0;
+    let after: string | null = null;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const { search: result } = (await graphql(token, SEARCH_QUERY, { search, after })) as {
+        search: SearchPage & { issueCount: number };
+      };
+      count = result.issueCount;
+      for (const pr of result.nodes) {
         const ref = typeof pr.number === "number" ? refOf(pr) : null;
         if (ref) byRef.set(ref, pr);
       }
+      if (!result.pageInfo.hasNextPage) break;
+      after = result.pageInfo.endCursor;
     }
+    counts.push({ search, count });
   }
   return { prs: [...byRef.values()], counts };
 }
 
-// Admin debug view (step 10 of the multi-repo plan): what the scope finds for a
-// window, before any of it reaches the board.
-export async function scopeCheck(token: string, scope: EventScope, from: string, to: string) {
+// Which way a PR counts. Shared by the admin check, the board and the review
+// queue, so what the check shows is what the board will do.
+//   auto:    closes at least one issue created before the cutoff; scored as in #1
+//   review:  in scope but closes nothing that qualifies; an organizer decides
+//   ignored: nobody left to credit once bots are dropped, or core team only
+//            (core team is acknowledged on the board, never reviewed for points)
+export type PrPath = "auto" | "review" | "ignored";
+
+export interface ClassifiedPr {
+  path: PrPath;
+  reason: string;
+  qualifying: IssueRef[];
+  closes: { ref: IssueRef; createdAt: string; qualifies: boolean }[];
+  contributors: string[];
+}
+
+export function classifyPr(pr: PrNode, cutoff: number, coreTeam: Set<string>): ClassifiedPr {
+  const closes = pr.closingIssuesReferences.nodes.flatMap((n) => {
+    const ref = refOf(n);
+    return ref
+      ? [{ ref, createdAt: n.createdAt, qualifies: Date.parse(n.createdAt) < cutoff }]
+      : [];
+  });
+  const qualifying = closes.filter((c) => c.qualifies).map((c) => c.ref);
+  const contributors = [...collectContributors(pr).keys()];
+  const base = { qualifying, closes, contributors };
+
+  if (contributors.length === 0) return { ...base, path: "ignored", reason: "bot" };
+  if (qualifying.length > 0) {
+    const n = qualifying.length;
+    return {
+      ...base,
+      path: "auto",
+      reason: `closes ${n} qualifying ${n === 1 ? "issue" : "issues"}`,
+    };
+  }
+  if (contributors.every((l) => coreTeam.has(l.toLowerCase()))) {
+    return { ...base, path: "ignored", reason: "core team" };
+  }
+  return {
+    ...base,
+    path: "review",
+    reason: closes.length ? "closes only issues from after the cutoff" : "closes no issue",
+  };
+}
+
+// Admin debug view: what the scope finds for a window and which way each PR
+// would count, before any of it reaches the board.
+export async function scopeCheck(
+  token: string,
+  config: Pick<EventConfig, "scope" | "qualifyingBefore" | "coreTeam">,
+  from: string,
+  to: string,
+) {
   const searches = scopeSearches(
-    scope,
+    config.scope,
     `is:pr is:merged created:${toGithubStamp(from)}..${toGithubStamp(to)}`,
   );
   const { prs, counts } = await searchPrsAcross(token, searches);
+  const cutoff = Date.parse(config.qualifyingBefore);
+  const core = new Set(config.coreTeam.map((l) => l.toLowerCase()));
   return {
     searches: counts,
+    cutoff: config.qualifyingBefore,
     prs: prs
       .map((pr) => ({
         ref: refOf(pr)!,
         author: pr.author?.login ?? "ghost",
-        bot: !isHuman(pr.author),
         createdAt: pr.createdAt,
         mergedAt: pr.mergedAt,
-        closes: pr.closingIssuesReferences.nodes.flatMap((n) => {
-          const ref = refOf(n);
-          return ref ? [{ ref, createdAt: n.createdAt }] : [];
-        }),
+        labels: (pr.labels?.nodes ?? []).map((l) => l.name),
+        ...classifyPr(pr, cutoff, core),
       }))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
   };

@@ -4,19 +4,37 @@ import { issueRefUrl } from "#shared/utils/issue-ref";
 
 definePageMeta({ layout: "admin" });
 
+type Path = "auto" | "review" | "ignored";
 interface CheckResult {
   summary: string;
   ms: number;
+  cutoff: string;
   searches: { search: string; count: number }[];
   prs: {
     ref: IssueRef;
     author: string;
-    bot: boolean;
     createdAt: string;
     mergedAt: string;
-    closes: { ref: IssueRef; createdAt: string }[];
+    labels: string[];
+    path: Path;
+    reason: string;
+    contributors: string[];
+    closes: { ref: IssueRef; createdAt: string; qualifies: boolean }[];
   }[];
 }
+
+// Colour and wording per path; the same three the board and review queue use.
+const PATHS: { path: Path; label: string; tone: string }[] = [
+  { path: "auto", label: "counts automatically", tone: "text-primary border-primary/50" },
+  { path: "review", label: "needs review", tone: "text-amber border-amber/50" },
+  { path: "ignored", label: "ignored", tone: "text-faint border-line" },
+];
+const tone = (p: Path) => PATHS.find((x) => x.path === p)!.tone;
+const count = (p: Path) => result.value?.prs.filter((x) => x.path === p).length ?? 0;
+const show = ref<Path | "all">("all");
+const visiblePrs = computed(() =>
+  (result.value?.prs ?? []).filter((p) => show.value === "all" || p.path === show.value),
+);
 
 const toast = useToast();
 const auth = useAdminAuth();
@@ -98,8 +116,26 @@ const day = (iso: string) => iso.slice(0, 16).replace("T", " ");
 
       <div class="flex flex-col gap-2">
         <span class="font-mono text-[0.72rem] uppercase tracking-wider text-fg">
-          Pull requests ({{ result.prs.length }}, duplicates across searches removed)
+          Pull requests ({{ result.prs.length }})
         </span>
+        <p class="font-mono text-[0.68rem] leading-relaxed text-muted">
+          Issues count when created before {{ day(result.cutoff) }} UTC. Green ones do, struck
+          through ones do not. Hover an issue for its date.
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <button class="btn" :class="show === 'all' ? '!border-fg' : ''" @click="show = 'all'">
+            all {{ result.prs.length }}
+          </button>
+          <button
+            v-for="p in PATHS"
+            :key="p.path"
+            class="btn"
+            :class="[p.tone, show === p.path ? '!border-current' : '']"
+            @click="show = p.path"
+          >
+            {{ p.label }} {{ count(p.path) }}
+          </button>
+        </div>
         <p
           v-if="!result.prs.length"
           class="panel px-4 py-6 text-center font-mono text-xs text-muted"
@@ -108,7 +144,7 @@ const day = (iso: string) => iso.slice(0, 16).replace("T", " ");
         </p>
         <div v-else class="panel divide-y divide-line/60">
           <div
-            v-for="pr in result.prs"
+            v-for="pr in visiblePrs"
             :key="pr.ref"
             class="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-4 py-2 font-mono text-[0.72rem]"
           >
@@ -119,9 +155,18 @@ const day = (iso: string) => iso.slice(0, 16).replace("T", " ");
               class="w-64 text-fg hover:text-primary hover:underline"
               >{{ pr.ref }}</a
             >
-            <span class="w-40 truncate" :class="pr.bot ? 'text-faint' : 'text-muted'">
-              @{{ pr.author }}<span v-if="pr.bot"> (bot)</span>
+            <span class="rounded-sm border px-1.5 py-px" :class="tone(pr.path)">
+              {{ pr.reason }}
             </span>
+            <span class="w-48 truncate text-muted" :title="pr.contributors.join(', ')">
+              @{{ pr.author }}
+              <span v-if="pr.contributors.length > 1">+{{ pr.contributors.length - 1 }}</span>
+            </span>
+            <span
+              v-if="pr.labels.some((l) => l.toLowerCase() === 'nuxtathon-v5')"
+              class="font-bold text-amber"
+              >v5 migration</span
+            >
             <span class="text-muted">opened {{ day(pr.createdAt) }}</span>
             <span class="text-muted">merged {{ day(pr.mergedAt) }}</span>
             <span class="text-muted">
@@ -133,7 +178,13 @@ const day = (iso: string) => iso.slice(0, 16).replace("T", " ");
                   :href="issueRefUrl(c.ref)"
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="mr-2 text-amber hover:underline"
+                  class="mr-2 hover:underline"
+                  :class="c.qualifies ? 'text-primary' : 'text-faint line-through'"
+                  :title="
+                    c.qualifies
+                      ? `created ${day(c.createdAt)}, before the cutoff`
+                      : `created ${day(c.createdAt)}, after the cutoff`
+                  "
                   >{{ c.ref }}</a
                 >
               </template>

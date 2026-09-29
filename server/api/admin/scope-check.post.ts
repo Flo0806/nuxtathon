@@ -7,7 +7,9 @@ const MAX_SPAN_MS = 7 * 24 * 60 * 60 * 1000;
 
 export default defineEventHandler(async (event) => {
   const token = useRuntimeConfig().githubToken;
-  if (!token) throw createError({ statusCode: 400, statusMessage: "NUXT_GITHUB_TOKEN is not set" });
+  if (!token) {
+    throw createError({ statusCode: 400, statusMessage: "NUXT_GITHUB_TOKEN is not set" });
+  }
 
   const body = await readBody<{ from?: string; to?: string }>(event);
   const from = Date.parse(String(body?.from ?? ""));
@@ -15,19 +17,25 @@ export default defineEventHandler(async (event) => {
   if (!Number.isFinite(from) || !Number.isFinite(to)) {
     throw createError({ statusCode: 422, statusMessage: "Pick a start and an end date" });
   }
-  if (to <= from)
+  if (to <= from) {
     throw createError({ statusCode: 422, statusMessage: "The end must be after the start" });
+  }
   if (to - from > MAX_SPAN_MS) {
     throw createError({ statusCode: 422, statusMessage: "At most 7 days per check" });
   }
 
-  const { scope } = await resolveEventConfig();
+  const config = await resolveEventConfig();
   const started = Date.now();
   const result = await scopeCheck(
     token,
-    scope,
+    config,
     new Date(from).toISOString(),
     new Date(to).toISOString(),
   );
-  return { scope, summary: scopeSummary(scope), ms: Date.now() - started, ...result };
+  return {
+    scope: config.scope,
+    summary: scopeSummary(config.scope),
+    ms: Date.now() - started,
+    ...result,
+  };
 });
