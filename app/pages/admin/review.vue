@@ -15,11 +15,13 @@ interface Review {
 
 const auth = useAdminAuth();
 const toast = useToast();
+const { confirm } = useConfirm();
 const review = ref<Review | null>(null);
 // Points typed per PR, prefilled with the suggestion and kept across reloads of
 // the list so a half-done edit is not lost when another row is decided.
 const points = reactive<Record<string, number>>({});
 const busy = ref<IssueRef | null>(null);
+const bulkBusy = ref(false);
 
 async function load() {
   review.value = await $fetch<Review>("/api/admin/review", { headers: auth.authHeaders() });
@@ -40,6 +42,49 @@ async function decide(ref: IssueRef, status: "confirmed" | "rejected" | "open") 
     if (!auth.handle401(e)) toast.error(errMsg(e));
   } finally {
     busy.value = null;
+  }
+}
+
+// Repos present in the open list, with counts, for the filter.
+const repoFilter = ref("");
+const repoCounts = computed(() => {
+  const counts = new Map<string, number>();
+  for (const i of review.value?.open ?? []) {
+    counts.set(repo(i.ref), (counts.get(repo(i.ref)) ?? 0) + 1);
+  }
+  return [...counts].sort(([a], [b]) => a.localeCompare(b));
+});
+const shown = computed(() =>
+  (review.value?.open ?? []).filter((i) => !repoFilter.value || repo(i.ref) === repoFilter.value),
+);
+// A filter pointing at a repo with nothing left open would show an empty list
+// that looks like "all done".
+watch(repoCounts, (list) => {
+  if (repoFilter.value && !list.some(([r]) => r === repoFilter.value)) repoFilter.value = "";
+});
+
+async function rejectShown() {
+  const refs = shown.value.map((i) => i.ref);
+  const ok = await confirm({
+    title: "Reject all shown",
+    message: `Reject ${refs.length} pull ${refs.length === 1 ? "request" : "requests"}${
+      repoFilter.value ? ` in ${repoFilter.value}` : ""
+    }? Each one can still be undone below.`,
+    confirmLabel: "Reject",
+  });
+  if (!ok) return;
+  bulkBusy.value = true;
+  try {
+    await $fetch("/api/admin/review", {
+      method: "POST",
+      headers: auth.authHeaders(),
+      body: { refs, status: "rejected" },
+    });
+    await load();
+  } catch (e) {
+    if (!auth.handle401(e)) toast.error(errMsg(e));
+  } finally {
+    bulkBusy.value = false;
   }
 }
 
@@ -82,9 +127,23 @@ const number = (ref: IssueRef) => splitIssueRef(ref).number;
           review.updatedAt ? "" : " yet: the list fills once the event is live"
         }}.
       </p>
-      <div v-else class="panel divide-y divide-line/60">
+      <div v-else class="flex flex-wrap items-center gap-3">
+        <select v-model="repoFilter" class="input" aria-label="filter by repository">
+          <option value="">all repositories ({{ review.open.length }})</option>
+          <option v-for="[r, n] in repoCounts" :key="r" :value="r">{{ r }} ({{ n }})</option>
+        </select>
+        <button
+          class="btn"
+          :disabled="review.frozen || bulkBusy || busy !== null || !shown.length"
+          @click="rejectShown"
+        >
+          <span class="i-ph-x-circle" aria-hidden="true" />
+          Reject all shown ({{ shown.length }})
+        </button>
+      </div>
+      <div v-if="review.open.length" class="panel divide-y divide-line/60">
         <div
-          v-for="item in review.open"
+          v-for="item in shown"
           :key="item.ref"
           class="flex flex-col gap-2 px-4 py-3 font-mono text-[0.72rem]"
         >
