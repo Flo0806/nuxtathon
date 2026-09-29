@@ -4,6 +4,7 @@ import type { IssueRef } from "#shared/types/issue-ref";
 import type { BoardIssue } from "#shared/types/issues";
 import { issueRef } from "#shared/utils/issue-ref";
 import { githubQuery } from "./github";
+import { budgetAllows, budgetNotice } from "./github-budget";
 import {
   fetchIssuesByRef,
   fetchRepoBacklog,
@@ -97,19 +98,25 @@ export async function readIssueBoard(
   const cutoff = cutoffDay(config);
   const key = storeKey(repo, cutoff);
   let stale = false;
+  // With the budget low the list lives on what it stored; the board comes first.
+  const mayAsk = budgetAllows("flos-list");
 
   // Delta first: it may decide that every store has to start over, and this
   // request should then already get the reloaded list, not the expired one.
   let since: string | null = null;
-  try {
-    since = await once(DELTA_KEY, () => syncDelta(token, cutoff));
-  } catch (e) {
-    console.error("[issues] delta sync failed, serving the stored list:", e);
+  if (mayAsk) {
+    try {
+      since = await once(DELTA_KEY, () => syncDelta(token, cutoff));
+    } catch (e) {
+      console.error("[issues] delta sync failed, serving the stored list:", e);
+      stale = true;
+    }
+  } else {
     stale = true;
   }
 
   let store = await storage().getItem<RepoStore>(key);
-  if (!store || Date.now() - Date.parse(store.fullAt) > FULL_EVERY_MS) {
+  if (mayAsk && (!store || Date.now() - Date.parse(store.fullAt) > FULL_EVERY_MS)) {
     try {
       store = await once(key, () => fullLoad(token, config, repo, cutoff, key));
     } catch (e) {
@@ -121,6 +128,10 @@ export async function readIssueBoard(
     }
   }
 
+  // Only reachable without a list when the budget kept us from loading one.
+  if (!store) {
+    throw createError({ statusCode: 429, statusMessage: `${budgetNotice()}, try again later` });
+  }
   const syncedAt = since && Date.parse(since) > Date.parse(store.fullAt) ? since : store.fullAt;
   return { issues: store.issues, syncedAt, stale };
 }
@@ -316,6 +327,8 @@ export async function resolveWatched(
     }
   }
 
+  // Unknown issues cost a lookup each; with the budget low they wait.
+  if (!budgetAllows("flos-list")) missing.length = 0;
   for (let i = 0; i < missing.length; i += MAX_WATCHED) {
     const chunk = missing.slice(i, i + MAX_WATCHED);
     const fetched = new Map((await fetchIssuesByRef(token, chunk)).map((b) => [b.ref, b]));

@@ -1,6 +1,7 @@
 import type { ContributionIds, EventConfig, ManualCredit } from "#shared/types/event";
 import type { IssueRef } from "#shared/types/issue-ref";
 import { fetchRegistryReview } from "./github";
+import { budgetAllows, budgetNotice } from "./github-budget";
 import type {
   ReviewDecision,
   ReviewDecisions,
@@ -100,11 +101,14 @@ let scanning: Promise<RegistryQueue> | null = null;
 // the account blocked. Kept in memory; a restart simply allows one try.
 let lastAttemptAt = 0;
 let lastError = "";
+// Set while scans wait for budget; cleared by the next scan that runs.
+let pausedReason = "";
 
 export const registryScanStatus = () => ({
   running: scanning !== null,
   lastAttemptAt: lastAttemptAt ? new Date(lastAttemptAt).toISOString() : "",
   lastError,
+  pausedReason,
 });
 
 // Starts the registry search when it is due: registry in scope, the event has
@@ -126,6 +130,12 @@ export async function scanRegistry(
     now >= Date.parse(config.startsAt) &&
     now - last >= (manual ? REGISTRY_MANUAL_MS : REGISTRY_EVERY_MS);
   if (!due) return { started: false, done: Promise.resolve(current) };
+  // Extras wait while the budget is low; the next recompute asks again.
+  if (!budgetAllows("extras")) {
+    pausedReason = budgetNotice();
+    return { started: false, done: Promise.resolve(current) };
+  }
+  pausedReason = "";
 
   lastAttemptAt = now;
   scanning ??= (async () => {

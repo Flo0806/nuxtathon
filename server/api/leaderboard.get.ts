@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import type { H3Event } from "h3";
-import type { EventConfig } from "#shared/types/event";
+import type {
+  ContributionIds,
+  EventConfig,
+  EventStats,
+  LeaderboardEntry,
+} from "#shared/types/event";
+import { budgetAllows, budgetNotice } from "../utils/github-budget";
 import { announceRankingIfChanged } from "../utils/announce";
 import {
   activeReviews,
@@ -33,6 +39,16 @@ const configKey = async (event: H3Event): Promise<string> => {
     .slice(0, 12);
 };
 
+const LAST_BOARD_KEY = "board-last";
+
+interface Board {
+  entries: LeaderboardEntry[];
+  coreTeam: LeaderboardEntry[];
+  stats: EventStats;
+  contributions: ContributionIds;
+  fetchedAt: string;
+}
+
 // Cached so N page views cost at most one GitHub fetch per maxAge window. Once
 // the event is fired, the frozen standings are served and GitHub is never hit
 // again.
@@ -62,7 +78,24 @@ export default defineCachedEventHandler(
     }
 
     const config = (event.context.eventConfig as EventConfig) ?? (await resolveEventConfig());
-    const result = await fetchLeaderboard(config, token);
+
+    // The last computed board stands in whenever GitHub cannot be asked: the
+    // budget is nearly gone (see budgetTier), or the recompute fails. A visible
+    // board a few minutes old beats an error page on the event weekend. `held`
+    // tells the page it is looking at that stored copy.
+    const last = await useStorage("state").getItem<Board>(LAST_BOARD_KEY);
+    if (last && !budgetAllows("board")) {
+      console.warn(`[leaderboard] ${budgetNotice()}, serving the board from ${last.fetchedAt}`);
+      return { ...last, held: true };
+    }
+    let result: Awaited<ReturnType<typeof fetchLeaderboard>>;
+    try {
+      result = await fetchLeaderboard(config, token);
+    } catch (e) {
+      if (!last) throw e;
+      console.error("[leaderboard] recompute failed, serving the last board:", e);
+      return { ...last, held: true };
+    }
     const fetchedAt = new Date().toISOString();
 
     // PR + marker closed issues. Passed to applyCredits first (so a manual credit
@@ -101,7 +134,8 @@ export default defineCachedEventHandler(
 
     // Same computation, so the queue always matches what the board scored.
     await writeReviewQueue(result.review, fetchedAt);
-    // Registry modules on their own hourly clock; never blocks the board.
+    // Registry modules on their own hourly clock; never blocks the board, and
+    // only while the budget has room for extras (scanRegistry checks).
     scanRegistry(token, config)
       .then(({ done }) => done)
       .catch((e) => console.error("[review] registry scan failed:", e));
@@ -120,7 +154,9 @@ export default defineCachedEventHandler(
       stats,
     ).catch((e) => console.error("[announce] ranking post failed:", e));
 
-    return { entries, coreTeam: result.coreTeam, stats, contributions, fetchedAt };
+    const board: Board = { entries, coreTeam: result.coreTeam, stats, contributions, fetchedAt };
+    await useStorage("state").setItem(LAST_BOARD_KEY, board);
+    return board;
   },
   {
     maxAge: 300,

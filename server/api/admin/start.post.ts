@@ -35,6 +35,8 @@ export default defineEventHandler(async (event) => {
   await clearReviewQueue();
   await clearReviewDecisions();
   await clearRegistryQueue();
+  // The last board belongs to the old event; it must never stand in for the new one.
+  await useStorage("state").removeItem("board-last");
   await clearAnnounceState();
   await invalidateLeaderboardCache();
   if (body?.announce) {

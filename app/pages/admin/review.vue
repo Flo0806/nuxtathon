@@ -15,6 +15,7 @@ interface Review {
     running: boolean;
     lastAttemptAt: string;
     lastError: string;
+    pausedReason: string;
   };
   open: ReviewItem[];
   decided: ReviewDecision[];
@@ -167,7 +168,13 @@ const number = (ref: IssueRef) => splitIssueRef(ref).number;
             UTC, again every hour while the event runs.
           </template>
           <template v-else>not searched yet (starts with the event, if in scope).</template>
-          <span v-if="!review.registry.running && review.registry.lastError" class="text-red-400">
+          <span v-if="!review.registry.running && review.registry.pausedReason" class="text-amber">
+            Paused: {{ review.registry.pausedReason }}. It resumes on its own.
+          </span>
+          <span
+            v-else-if="!review.registry.running && review.registry.lastError"
+            class="text-red-400"
+          >
             Last attempt {{ day(review.registry.lastAttemptAt) }} UTC failed:
             {{ review.registry.lastError }}. Retried automatically after an hour.
           </span>

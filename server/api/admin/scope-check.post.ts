@@ -1,4 +1,5 @@
 import { scopeSummary } from "#shared/utils/scope";
+import { budgetAllows, budgetNotice } from "../../utils/github-budget";
 
 // Runs the saved scope against a window and lists what it finds. Every call hits
 // GitHub live, so the window is capped: a week covers any event with room to
@@ -24,6 +25,10 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 422, statusMessage: "At most 7 days per check" });
   }
 
+  // A check is optional; it must not eat the budget the board lives on.
+  if (!budgetAllows("extras")) {
+    throw createError({ statusCode: 429, statusMessage: `${budgetNotice()}, try again later` });
+  }
   const config = await resolveEventConfig();
   const started = Date.now();
   const result = await scopeCheck(

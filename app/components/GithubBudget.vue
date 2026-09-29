@@ -18,10 +18,20 @@ interface Call {
   remaining: number;
   limited: boolean;
 }
+type Tier = "full" | "saving" | "tight" | "critical";
 interface Budget {
   readings: Partial<Record<Resource, Reading>>;
   calls: Call[];
+  tier: Tier;
 }
+
+// What the budget guard has switched off at each tier (server/utils/github-budget.ts).
+const TIER_NOTE: Record<Tier, string> = {
+  full: "",
+  saving: "saving: registry search and scope check paused",
+  tight: "tight: Flo's list shows stored data, registry and scope check paused",
+  critical: "critical: the board shows its last result until the budget resets",
+};
 
 const { source } = defineProps<{ source: "admin" | "session" }>();
 const auth = useAdminAuth();
@@ -81,6 +91,11 @@ const entries = computed(
     >
       <span class="i-simple-icons-github" aria-hidden="true" />
       <span v-if="limitedRecently" class="font-bold text-red-400">rate limited</span>
+      <span
+        v-if="budget.tier !== 'full'"
+        :class="budget.tier === 'critical' ? 'font-bold text-red-400' : 'text-amber'"
+        >{{ TIER_NOTE[budget.tier] }}</span
+      >
       <span v-for="[k, r] in entries" :key="k">
         {{ LABELS[k] }}
         <span :class="tone(r)">{{ r.remaining }}</span
