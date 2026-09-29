@@ -27,3 +27,14 @@ export interface ReviewQueue {
 
 // PR label that marks a module's migration to Nuxt v5 (announcement #36438).
 export const V5_LABEL = "nuxtathon-v5";
+
+// An organizer's call on a queued PR. The item is copied in as it was decided,
+// so a later change on GitHub cannot move points that were already granted.
+export interface ReviewDecision extends ReviewItem {
+  status: "confirmed" | "rejected";
+  // Granted to every login in `people` when confirmed; 0 when rejected.
+  points: number;
+  decidedAt: string;
+}
+
+export type ReviewDecisions = Record<string, ReviewDecision>;
