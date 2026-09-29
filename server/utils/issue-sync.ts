@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import type { EventConfig } from "#shared/types/event";
+import type { IssueRef } from "#shared/types/issue-ref";
 import type { BoardIssue } from "#shared/types/issues";
+import { issueRef } from "#shared/utils/issue-ref";
+import { githubQuery } from "./github";
 import {
   fetchRepoBacklog,
   ISSUE_ORG,
@@ -130,7 +133,8 @@ async function fullLoad(
 }
 
 // Applies everything in the org that changed since the last run to the repos
-// that have a store. Runs at most every DELTA_EVERY_MS; returns the time the
+// that have a store: issue changes from the REST search, new PR links from
+// GraphQL. Both must go through before `since` moves, so a failure is retried. Runs at most every DELTA_EVERY_MS; returns the time the
 // stores are current as of.
 async function syncDelta(token: string, cutoff: string): Promise<string> {
   const now = Date.now();
@@ -151,7 +155,8 @@ async function syncDelta(token: string, cutoff: string): Promise<string> {
     return stamp(now);
   }
 
-  const q = `org:${ISSUE_ORG} is:issue updated:>${stamp(Date.parse(state.since) - DELTA_OVERLAP_MS)}`;
+  const from = stamp(Date.parse(state.since) - DELTA_OVERLAP_MS);
+  const q = `org:${ISSUE_ORG} is:issue updated:>${from}`;
   const changed: RestIssue[] = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
     const { total_count, items } = await restSearchPage(token, q, page);
@@ -164,23 +169,71 @@ async function syncDelta(token: string, cutoff: string): Promise<string> {
     if (items.length < PER_PAGE) break;
   }
 
+  const linked = await fetchNewlyLinked(token, from);
+
+  const repoOf = (ref: IssueRef) => ref.slice(0, ref.lastIndexOf("#"));
   const byRepo = new Map<string, RestIssue[]>();
   for (const item of changed) {
     const ref = restRef(item);
     if (!ref) continue;
-    const repo = ref.slice(0, ref.lastIndexOf("#"));
-    byRepo.set(repo, [...(byRepo.get(repo) ?? []), item]);
+    byRepo.set(repoOf(ref), [...(byRepo.get(repoOf(ref)) ?? []), item]);
   }
+  const touched = new Set([...byRepo.keys(), ...[...linked].map(repoOf)]);
   const before = Date.parse(`${cutoff}T00:00:00Z`);
-  for (const [repo, items] of byRepo) {
+  for (const repo of touched) {
     const key = storeKey(repo, cutoff);
     const store = await storage().getItem<RepoStore>(key);
     if (!store) continue;
-    await storage().setItem(key, { ...store, issues: applyChanges(store.issues, items, before) });
+    const issues = applyChanges(store.issues, byRepo.get(repo) ?? [], before).map((i) =>
+      !i.hasPr && linked.has(i.ref) ? { ...i, hasPr: true } : i,
+    );
+    await storage().setItem(key, { ...store, issues });
   }
 
   await storage().setItem(DELTA_KEY, { since: stamp(now) });
   return stamp(now);
+}
+
+// Linking a PR to an issue does not touch the issue's `updated_at` (checked
+// against the timeline), so the issue delta never sees it. The PR side does
+// change, so this asks which issues the recently updated PRs close. GraphQL
+// because the REST search cannot return closing references; one point a page.
+async function fetchNewlyLinked(token: string, from: string): Promise<Set<IssueRef>> {
+  interface Page {
+    search: {
+      pageInfo: { hasNextPage: boolean; endCursor: string | null };
+      nodes: {
+        closingIssuesReferences?: {
+          nodes: { number: number; repository: { nameWithOwner: string } }[];
+        };
+      }[];
+    };
+  }
+  const q = `org:${ISSUE_ORG} is:pr updated:>${from}`;
+  const linked = new Set<IssueRef>();
+  let after: string | null = null;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const res: Page = await githubQuery<Page>(
+      token,
+      `query {
+        search(type: ISSUE, first: 100, after: ${JSON.stringify(after)}, query: ${JSON.stringify(q)}) {
+          pageInfo { hasNextPage endCursor }
+          nodes { ... on PullRequest {
+            closingIssuesReferences(first: 20) { nodes { number repository { nameWithOwner } } }
+          } }
+        }
+      }`,
+    );
+    for (const pr of res.search.nodes) {
+      for (const n of pr.closingIssuesReferences?.nodes ?? []) {
+        const ref = issueRef(n.repository.nameWithOwner, n.number);
+        if (ref) linked.add(ref);
+      }
+    }
+    if (!res.search.pageInfo.hasNextPage) break;
+    after = res.search.pageInfo.endCursor;
+  }
+  return linked;
 }
 
 // An issue stays or enters when it is open and was created before the cutoff;
