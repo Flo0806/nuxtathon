@@ -26,9 +26,15 @@ const configKey = async (event: H3Event): Promise<string> => {
     .slice(0, 12);
 };
 
-// Cached so N page views cost at most one GitHub fetch per maxAge window. SWR
-// serves stale instantly and revalidates in the background. Once the event is
-// fired, the frozen standings are served and GitHub is never hit again.
+// Cached so N page views cost at most one GitHub fetch per maxAge window. Once
+// the event is fired, the frozen standings are served and GitHub is never hit
+// again.
+//
+// No SWR on purpose. A background revalidation that started before an admin
+// save finishes after the save cleared the cache and writes its stale result
+// back, so the change never shows on the site (seen before #1). Without SWR the
+// first visitor after expiry waits for the recompute (~7 s with two orgs in
+// scope); concurrent visitors share that one computation.
 export default defineCachedEventHandler(
   async (event) => {
     const state = await readRuntimeState();
