@@ -45,6 +45,8 @@ export default defineEventHandler(async (event) => {
       };
     }
     await writeReviewDecisions(decisions);
+    // The board shows a decision right away instead of after the cache expires.
+    await invalidateLeaderboardCache();
     return { ok: true };
   });
 });

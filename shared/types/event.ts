@@ -1,4 +1,5 @@
 import type { IssueRef } from "./issue-ref";
+import type { ReviewDecision } from "./review";
 import type { EventScope } from "./scope";
 import type { ScoringRules } from "./scoring";
 
@@ -222,6 +223,10 @@ export interface FinalResult {
   standings: LeaderboardEntry[];
   coreTeam: LeaderboardEntry[];
   contributions: ContributionIds;
+  // Reviewed PRs that were confirmed, as decided at fire. Their points are
+  // already in the standings (as manual credits); this is the record of why.
+  // Optional: events before the review queue have none.
+  reviews?: ReviewDecision[];
 }
 
 // Mutable, admin-writable state. Snapshots live under a separate storage key

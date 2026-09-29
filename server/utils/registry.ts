@@ -30,7 +30,9 @@ export const fetchRegistryMaintainers = defineCachedFunction(
     }
     return Object.fromEntries(Object.entries(out).map(([repo, set]) => [repo, [...set]]));
   },
-  { maxAge: 24 * 60 * 60, name: "module-registry", getKey: () => "maintainers" },
+  // Kept on the "issues" mount: admin actions clear "cache" completely, and every
+  // review click would otherwise download the registry again.
+  { maxAge: 24 * 60 * 60, name: "module-registry", getKey: () => "maintainers", base: "issues" },
 );
 
 // For callers that must not fail with the registry: an outage then means nobody

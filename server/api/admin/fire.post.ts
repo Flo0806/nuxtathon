@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Award, FinalResult } from "#shared/types/event";
 import { isDefaultScoring, scoreUnit } from "#shared/utils/scoring";
 import { announceFinal } from "~~/server/utils/announce";
+import { activeReviews, readReviewDecisions, reviewCredits } from "~~/server/utils/review";
 
 // Freeze the ranking, release prizes, and archive the result in one shot.
 export default defineEventHandler(async () => {
@@ -18,11 +19,18 @@ export default defineEventHandler(async () => {
   // first, then fold the remaining manual issues into the frozen count so it
   // matches what was on screen.
   const closed = new Set(result.closedIssues);
-  const standings = applyCredits(result.entries, state.credits, closed, {
-    rules: config.scoring,
-    facts: result.issueFacts,
-    contributions: result.contributions,
-  });
+  // Confirmed review decisions join as credits; see reviewCredits for why.
+  const reviews = activeReviews(await readReviewDecisions(), result.contributions);
+  const standings = applyCredits(
+    result.entries,
+    [...state.credits, ...reviewCredits(reviews)],
+    closed,
+    {
+      rules: config.scoring,
+      facts: result.issueFacts,
+      contributions: result.contributions,
+    },
+  );
   const contributions = { ...result.contributions };
 
   for (const c of state.credits) {
@@ -73,6 +81,7 @@ export default defineEventHandler(async () => {
     standings,
     coreTeam: result.coreTeam,
     contributions,
+    reviews,
   };
 
   // Upsert by (title, startsAt) so re-firing the same event does not duplicate.

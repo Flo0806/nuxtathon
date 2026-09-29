@@ -2,6 +2,12 @@ import { createHash } from "node:crypto";
 import type { H3Event } from "h3";
 import type { EventConfig } from "#shared/types/event";
 import { announceRankingIfChanged } from "../utils/announce";
+import {
+  activeReviews,
+  readReviewDecisions,
+  reviewCredits,
+  writeReviewQueue,
+} from "../utils/review";
 
 // Keyed on the scoring-relevant config so any change to it busts the cache. The
 // resolved config is parked on the event so the handler fetches with the exact
@@ -62,11 +68,18 @@ export default defineCachedEventHandler(
     // for an already-covered issue is dropped, not double-scored), then the
     // remaining manual issues are folded in for the headline count.
     const closed = new Set(result.closedIssues);
-    const entries = applyCredits(result.entries, state.credits, closed, {
-      rules: config.scoring,
-      facts: result.issueFacts,
-      contributions: result.contributions,
-    });
+    // Confirmed review decisions join as credits; see reviewCredits for why.
+    const reviews = activeReviews(await readReviewDecisions(), result.contributions);
+    const entries = applyCredits(
+      result.entries,
+      [...state.credits, ...reviewCredits(reviews)],
+      closed,
+      {
+        rules: config.scoring,
+        facts: result.issueFacts,
+        contributions: result.contributions,
+      },
+    );
     const contributions = { ...result.contributions };
 
     for (const c of state.credits) {

@@ -186,7 +186,8 @@ export const fetchIssueRepos = defineCachedFunction(
       (a, b) => Number(b === HOME_REPO) - Number(a === HOME_REPO) || a.localeCompare(b),
     );
   },
-  { maxAge: 6 * 60 * 60, name: "issue-repos", getKey: () => ISSUE_ORG },
+  // Not on "cache": admin actions clear that mount completely.
+  { maxAge: 6 * 60 * 60, name: "issue-repos", getKey: () => ISSUE_ORG, base: "issues" },
 );
 
 // Per-user watch list. Its own key per login, so two people never race.
