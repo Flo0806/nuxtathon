@@ -1,7 +1,10 @@
+import type { IssueRef } from "./issue-ref";
+
 // One open, still qualifying issue as the list shows it. Everything comes from a
 // single GitHub search, so the list costs a handful of requests no matter how
 // many people are looking at it.
 export interface BoardIssue {
+  ref: IssueRef;
   number: number;
   title: string;
   url: string;
@@ -21,6 +24,11 @@ export interface BoardIssue {
 
 export interface IssueBoard {
   fetchedAt: string;
+  // The repo `issues` comes from, and every repo the list can switch to.
+  repo: string;
+  repos: string[];
+  // Qualifying cutoff as a calendar day (exclusive), for the page to say so.
+  createdBefore: string;
   // Exactly what the open search returned. The left column shows this and
   // nothing else.
   issues: BoardIssue[];
@@ -28,9 +36,9 @@ export interface IssueBoard {
   // watch column can still show their outcome. Kept apart rather than mixed in,
   // so membership is never inferred from a flag.
   watchedExtra: BoardIssue[];
-  // Issue numbers this user is watching, newest first.
-  watching: number[];
-  // Issue number -> when this user last acknowledged it. Anything GitHub touched
-  // after that counts as new, which is why it is kept per issue and not once.
-  seen: Record<string, string>;
+  // Issues this user is watching, newest first.
+  watching: IssueRef[];
+  // Issue -> when this user last acknowledged it. Anything GitHub touched after
+  // that counts as new, which is why it is kept per issue and not once.
+  seen: Record<IssueRef, string>;
 }

@@ -28,9 +28,10 @@ export function parseIssueRef(input: unknown, homeRepo = HOME_REPO): IssueRef | 
   const short = /^([^/\s#]+\/[^/\s#]+)#(\d+)$/.exec(text);
   if (short) return issueRef(short[1]!, Number(short[2]));
 
-  const url = /^https?:\/\/(?:www\.)?github\.com\/([^/\s]+\/[^/\s]+)\/(?:issues|pull)\/(\d+)(?:[/?#].*)?$/i.exec(
-    text,
-  );
+  const url =
+    /^https?:\/\/(?:www\.)?github\.com\/([^/\s]+\/[^/\s]+)\/(?:issues|pull)\/(\d+)(?:[/?#].*)?$/i.exec(
+      text,
+    );
   if (url) return issueRef(url[1]!, Number(url[2]));
 
   return null;
@@ -87,6 +88,8 @@ export function normalizeCreditIssue(
   homeRepo = HOME_REPO,
 ): IssueRef | undefined {
   return (
-    parseIssueRef(credit.issue, homeRepo) ?? parseIssueRef(credit.issueNumber, homeRepo) ?? undefined
+    parseIssueRef(credit.issue, homeRepo) ??
+    parseIssueRef(credit.issueNumber, homeRepo) ??
+    undefined
   );
 }

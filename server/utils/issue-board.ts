@@ -1,5 +1,8 @@
+import type { IssueRef } from "#shared/types/issue-ref";
 import type { BoardIssue } from "#shared/types/issues";
+import { HOME_REPO, issueRef, normalizeIssueRefs, parseIssueRef } from "#shared/utils/issue-ref";
 import { issueSearchQuery } from "#shared/utils/issue-search";
+import { batchedIssueQuery, githubQuery, type RepoAliases } from "./github";
 
 const PER_PAGE = 100;
 // 500 issues of headroom over the ~280 that qualify today; GitHub's search stops
@@ -11,6 +14,8 @@ export const MAX_WATCHED = 100;
 
 interface RestIssue {
   number: number;
+  // "https://api.github.com/repos/<owner>/<repo>"; the search spans repos later.
+  repository_url: string;
   title: string;
   html_url: string;
   created_at: string;
@@ -59,24 +64,34 @@ export const fetchIssueBoard = defineCachedFunction(
       searchAll(token, query),
       searchAll(token, `${query} linked:pr`),
     ]);
-    const withPr = new Set(linked.map((i) => i.number));
+    const withPr = new Set(linked.map(restRef));
 
-    return all.map((i) => ({
-      number: i.number,
-      title: i.title,
-      url: i.html_url,
-      author: i.user?.login ?? "ghost",
-      createdAt: i.created_at,
-      updatedAt: i.updated_at,
-      comments: i.comments,
-      upvotes: i.reactions?.["+1"] ?? 0,
-      labels: i.labels.map((l) => l.name),
-      assignee: i.assignee?.login ?? null,
-      hasPr: withPr.has(i.number),
-    }));
+    return all.flatMap((i) => {
+      const ref = restRef(i);
+      if (!ref) return [];
+      return [
+        {
+          ref,
+          number: i.number,
+          title: i.title,
+          url: i.html_url,
+          author: i.user?.login ?? "ghost",
+          createdAt: i.created_at,
+          updatedAt: i.updated_at,
+          comments: i.comments,
+          upvotes: i.reactions?.["+1"] ?? 0,
+          labels: i.labels.map((l) => l.name),
+          assignee: i.assignee?.login ?? null,
+          hasPr: withPr.has(ref),
+        },
+      ];
+    });
   },
   { maxAge: 300, name: "issue-board", getKey: (_token, query) => query },
 );
+
+const restRef = (i: RestIssue): IssueRef | null =>
+  issueRef(i.repository_url.replace(/^https:\/\/api\.github\.com\/repos\//, ""), i.number);
 
 // Watched issues that left the open list: closed, or no longer qualifying. One
 // batched query with an alias per number, so a handful costs a single request.
@@ -85,33 +100,17 @@ export const fetchIssueBoard = defineCachedFunction(
 // Cached like the board: this is the only lookup whose cost follows the users
 // rather than the repo, so repeated polls must not each pay for it.
 export const fetchClosedWatched = defineCachedFunction(
-  (token: string, numbers: number[]) => closedWatched(token, numbers),
+  (token: string, refs: IssueRef[]) => closedWatched(token, refs),
   {
     maxAge: 300,
     name: "closed-watched",
-    getKey: (_token: string, numbers: number[]) => [...numbers].sort((a, b) => a - b).join(","),
+    getKey: (_token: string, refs: IssueRef[]) => [...refs].sort().join(","),
   },
 );
 
-async function closedWatched(token: string, numbers: number[]): Promise<BoardIssue[]> {
-  const unique = [...new Set(numbers.filter((n) => Number.isInteger(n) && n > 0))].slice(
-    0,
-    MAX_WATCHED,
-  );
+async function closedWatched(token: string, refs: IssueRef[]): Promise<BoardIssue[]> {
+  const unique = [...new Set(refs)].slice(0, MAX_WATCHED);
   if (unique.length === 0) return [];
-
-  const fields = unique
-    .map(
-      (n) => `i${n}: issue(number: ${n}) {
-        number title url createdAt updatedAt state
-        author { login }
-        comments { totalCount }
-        reactions(content: THUMBS_UP) { totalCount }
-        labels(first: 20) { nodes { name } }
-        assignees(first: 1) { nodes { login } }
-      }`,
-    )
-    .join("\n");
 
   interface Node {
     number: number;
@@ -127,16 +126,23 @@ async function closedWatched(token: string, numbers: number[]): Promise<BoardIss
     assignees: { nodes: { login: string }[] };
   }
 
-  const res = await githubQuery<{ repository?: Record<string, Node | null> | null }>(
-    token,
-    `query { repository(owner: "nuxt", name: "nuxt") { ${fields} } }`,
+  const { query, paths } = batchedIssueQuery(
+    unique,
+    `number title url createdAt updatedAt state
+    author { login }
+    comments { totalCount }
+    reactions(content: THUMBS_UP) { totalCount }
+    labels(first: 20) { nodes { name } }
+    assignees(first: 1) { nodes { login } }`,
   );
+  const data = await githubQuery<RepoAliases<Node>>(token, query);
 
   const out: BoardIssue[] = [];
-  for (const n of unique) {
-    const node = res?.repository?.[`i${n}`];
+  for (const p of paths) {
+    const node = data[p.repo]?.[p.issue];
     if (!node) continue;
     out.push({
+      ref: p.ref,
       number: node.number,
       title: node.title,
       url: node.url,
@@ -154,8 +160,47 @@ async function closedWatched(token: string, numbers: number[]): Promise<BoardIss
   return out;
 }
 
-export const boardQuery = (config: Parameters<typeof issueSearchQuery>[0]) =>
-  issueSearchQuery(config);
+export const boardQuery = (config: Parameters<typeof issueSearchQuery>[0], repo?: string) =>
+  issueSearchQuery(config, repo);
+
+// Repos the list can switch between: every public nuxt/* repo that takes issues
+// and has anything open.
+// Repos appear or get archived a few times a year, so six hours is plenty and
+// keeps the dropdown free. The core repo leads, the rest is alphabetical.
+const ISSUE_ORG = "nuxt";
+export const fetchIssueRepos = defineCachedFunction(
+  async (token: string): Promise<string[]> => {
+    interface RestRepo {
+      full_name: string;
+      archived: boolean;
+      fork: boolean;
+      has_issues: boolean;
+      // Issues plus PRs; only used to hide repos with nothing open at all.
+      open_issues_count: number;
+    }
+    const names: string[] = [];
+    for (let page = 1; page <= 5; page++) {
+      const repos = await $fetch<RestRepo[]>(`https://api.github.com/orgs/${ISSUE_ORG}/repos`, {
+        query: { type: "public", per_page: PER_PAGE, page },
+        headers: {
+          authorization: `Bearer ${token}`,
+          accept: "application/vnd.github+json",
+          "user-agent": "nuxtathon-leaderboard",
+        },
+      });
+      for (const r of repos) {
+        if (!r.archived && !r.fork && r.has_issues && r.open_issues_count > 0) {
+          names.push(r.full_name.toLowerCase());
+        }
+      }
+      if (repos.length < PER_PAGE) break;
+    }
+    return names.sort(
+      (a, b) => Number(b === HOME_REPO) - Number(a === HOME_REPO) || a.localeCompare(b),
+    );
+  },
+  { maxAge: 6 * 60 * 60, name: "issue-repos", getKey: () => ISSUE_ORG },
+);
 
 // Per-user watch list. Its own key per login, so two people never race.
 //
@@ -163,24 +208,35 @@ export const boardQuery = (config: Parameters<typeof issueSearchQuery>[0]) =>
 // started watching today must not light up because of a comment from last year,
 // and adding one after a "mark as seen" has to behave the same way.
 interface WatchState {
-  // Issue numbers in display order, newest first.
-  watching: number[];
-  // Issue number -> when this user last acknowledged it.
-  seen: Record<string, string>;
+  // Issues in display order, newest first.
+  watching: IssueRef[];
+  // Issue -> when this user last acknowledged it.
+  seen: Record<IssueRef, string>;
 }
 const watchKey = (login: string) => `watch:${login.toLowerCase()}`;
 
+// Lists saved before refs hold bare nuxt/nuxt numbers, and their `seen` keys are
+// those numbers as strings. Both are read as refs; the next write stores refs.
 export async function readWatch(login: string): Promise<WatchState> {
-  const stored = await useStorage("state").getItem<Partial<WatchState> & { lastSeenAt?: string }>(
-    watchKey(login),
-  );
-  const watching = stored?.watching ?? [];
-  if (stored?.seen) return { watching, seen: stored.seen };
+  const stored = await useStorage("state").getItem<{
+    watching?: unknown[];
+    seen?: Record<string, string>;
+    lastSeenAt?: string;
+  }>(watchKey(login));
+  const watching = normalizeIssueRefs(stored?.watching);
+  if (stored?.seen) {
+    const seen: Record<IssueRef, string> = {};
+    for (const [key, at] of Object.entries(stored.seen)) {
+      const ref = parseIssueRef(key);
+      if (ref) seen[ref] = at;
+    }
+    return { watching, seen };
+  }
 
   // Older records carried a single timestamp for everything; fold it into the
   // per-issue map so nothing is suddenly marked unread.
   const fallback = stored?.lastSeenAt ?? new Date().toISOString();
-  return { watching, seen: Object.fromEntries(watching.map((n) => [String(n), fallback])) };
+  return { watching, seen: Object.fromEntries(watching.map((r) => [r, fallback])) };
 }
 
 export async function writeWatch(login: string, state: WatchState): Promise<void> {

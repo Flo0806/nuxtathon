@@ -106,8 +106,7 @@ async function saveCredits() {
 // avatar request is not fired for every keystroke in a login field.
 const preview = computed(() => (board.value?.entries ?? []).filter((e) => e.score > 0));
 
-const addCredit = () =>
-  credits.value.push({ login: "", amount: 1, note: "", issue: "" });
+const addCredit = () => credits.value.push({ login: "", amount: 1, note: "", issue: "" });
 const removeCredit = (i: number) => credits.value.splice(i, 1);
 
 function downloadJson(filename: string, data: unknown) {

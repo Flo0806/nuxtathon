@@ -3,7 +3,9 @@ import { issueRefLabel, normalizeCreditIssue } from "#shared/utils/issue-ref";
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<{ credits?: (ManualCredit & { issueNumber?: unknown })[] }>(event);
-  const raw = (body?.credits ?? []).filter((c) => c && typeof c.login === "string" && c.login.trim());
+  const raw = (body?.credits ?? []).filter(
+    (c) => c && typeof c.login === "string" && c.login.trim(),
+  );
 
   // The issue field accepts "123", "#123", "owner/repo#123" or a GitHub URL. Text
   // that is none of those is rejected here rather than silently dropped, which

@@ -3,15 +3,19 @@ import { ISSUES_PLACEHOLDER, LINK_ICONS, RANDOM_PLACEHOLDER } from "../types/eve
 
 export const NUXT_REPO = "nuxt/nuxt";
 
-// The one definition of "an issue you could pick up": open, in the core repo,
-// and created early enough to qualify. Everything that points people at issues
-// derives from this, so the cutoff date is never written down twice.
-export function issueSearchQuery(config: Pick<EventConfig, "qualifyingBefore">): string {
+// The one definition of "an issue you could pick up": open, in the given repo
+// (the core repo unless a caller asks for another), and created early enough to
+// qualify. Everything that points people at issues derives from this, so the
+// cutoff date is never written down twice.
+export function issueSearchQuery(
+  config: Pick<EventConfig, "qualifyingBefore">,
+  repo: string = NUXT_REPO,
+): string {
   const cutoff = new Date(config.qualifyingBefore);
   // GitHub search takes a date, and `created:<` is exclusive, so the instant
   // maps to its calendar day in UTC.
   const day = Number.isFinite(cutoff.getTime()) ? cutoff.toISOString().slice(0, 10) : "";
-  const parts = [`repo:${NUXT_REPO}`, "is:issue", "state:open"];
+  const parts = [`repo:${repo}`, "is:issue", "state:open"];
   if (day) parts.push(`created:<${day}`);
   return parts.join(" ");
 }

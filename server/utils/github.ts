@@ -220,7 +220,7 @@ async function graphql(token: string, query: string, variables: object): Promise
 // inside it, one per number. Owner and name come from validated refs, so they
 // are safe to interpolate. GitHub answers a missing issue with a NOT_FOUND error
 // *and* partial data (null for that field), which callers classify per alias.
-function batchedIssueQuery(refs: IssueRef[], selection: string) {
+export function batchedIssueQuery(refs: IssueRef[], selection: string) {
   const byRepo = new Map<string, number[]>();
   for (const ref of refs) {
     const { repo, number } = splitIssueRef(ref);
@@ -238,7 +238,7 @@ function batchedIssueQuery(refs: IssueRef[], selection: string) {
   return { query: `query { ${parts.join("\n")} }`, paths };
 }
 
-type RepoAliases<T> = Record<string, Record<string, T | null> | null>;
+export type RepoAliases<T> = Record<string, Record<string, T | null> | null>;
 
 // Confirm each ref is a real issue. Backs the manual-credit save: a credit may
 // only point at an issue that exists, so a fat-fingered number can never slip
@@ -294,7 +294,10 @@ async function fetchIssueUpvotes(token: string, refs: IssueRef[]): Promise<numbe
   const unique = [...new Set(refs)].slice(0, 100);
   if (unique.length === 0) return 0;
 
-  const { query, paths } = batchedIssueQuery(unique, "reactions(content: THUMBS_UP) { totalCount }");
+  const { query, paths } = batchedIssueQuery(
+    unique,
+    "reactions(content: THUMBS_UP) { totalCount }",
+  );
   const res = await post<{ data?: RepoAliases<{ reactions?: { totalCount: number } }> }>(
     token,
     query,
@@ -434,7 +437,8 @@ async function fetchMarkerCredits(
       search: MarkerPage;
     };
     for (const issue of result.nodes) {
-      const ref = typeof issue.number === "number" ? refOf({ ...issue, number: issue.number }) : null;
+      const ref =
+        typeof issue.number === "number" ? refOf({ ...issue, number: issue.number }) : null;
       if (!ref) continue;
       const logins = new Set<string>();
       for (const comment of issue.comments?.nodes ?? []) {

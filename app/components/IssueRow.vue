@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { BoardIssue } from "#shared/types/issues";
+import { splitIssueRef } from "#shared/utils/issue-ref";
 
 defineProps<{
   issue: BoardIssue;
@@ -7,6 +8,8 @@ defineProps<{
   fresh: boolean;
   age: string;
   busy: boolean;
+  // The watch column mixes repos, so every row there names its own.
+  showRepo?: boolean;
 }>();
 defineEmits<{ toggle: [] }>();
 </script>
@@ -49,6 +52,11 @@ defineEmits<{ toggle: [] }>();
         {{ issue.title }}
       </a>
       <p class="mt-0.5 flex flex-wrap items-center gap-x-3 font-mono text-[0.62rem] text-muted">
+        <span
+          v-if="showRepo"
+          class="rounded-sm border border-amber/50 bg-amber/10 px-1.5 py-px font-bold text-amber"
+          >{{ splitIssueRef(issue.ref).repo }}</span
+        >
         <span>{{ age }} old</span>
         <span v-if="issue.upvotes">{{ issue.upvotes }} &#128077;</span>
         <span v-if="issue.comments">{{ issue.comments }} comments</span>
