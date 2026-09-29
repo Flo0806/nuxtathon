@@ -92,22 +92,10 @@ export async function fetchRepoBacklog(token: string, query: string): Promise<Bo
   });
 }
 
-// Watched issues that left the open list: closed, or no longer qualifying. One
-// batched query with an alias per number, so a handful costs a single request.
-// Without this a watched issue would simply vanish the moment someone solved it,
-// which is the one outcome the watcher actually waits for.
-// Cached like the board: this is the only lookup whose cost follows the users
-// rather than the repo, so repeated polls must not each pay for it.
-export const fetchClosedWatched = defineCachedFunction(
-  (token: string, refs: IssueRef[]) => closedWatched(token, refs),
-  {
-    maxAge: 300,
-    name: "closed-watched",
-    getKey: (_token: string, refs: IssueRef[]) => [...refs].sort().join(","),
-  },
-);
-
-async function closedWatched(token: string, refs: IssueRef[]): Promise<BoardIssue[]> {
+// Issues looked up one by one, in a single batched query with an alias per
+// issue. Used for watched issues the stored backlogs do not know (see
+// resolveWatched); capped because the aliases go into the query text.
+export async function fetchIssuesByRef(token: string, refs: IssueRef[]): Promise<BoardIssue[]> {
   const unique = [...new Set(refs)].slice(0, MAX_WATCHED);
   if (unique.length === 0) return [];
 

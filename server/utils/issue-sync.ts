@@ -5,7 +5,9 @@ import type { BoardIssue } from "#shared/types/issues";
 import { issueRef } from "#shared/utils/issue-ref";
 import { githubQuery } from "./github";
 import {
+  fetchIssuesByRef,
   fetchRepoBacklog,
+  MAX_WATCHED,
   ISSUE_ORG,
   MAX_PAGES,
   PER_PAGE,
@@ -39,6 +41,9 @@ interface RepoStore {
   // When the full load started, so anything changed during it is still newer.
   fullAt: string;
   issues: BoardIssue[];
+  // Qualifying issues the delta saw being closed, newest first. Kept so a watch
+  // list can show the outcome without asking GitHub per user.
+  closed?: BoardIssue[];
 }
 
 interface DeltaState {
@@ -60,6 +65,8 @@ function cutoffDay(config: Pick<EventConfig, "qualifyingBefore">): string {
   const cutoff = new Date(config.qualifyingBefore);
   return Number.isFinite(cutoff.getTime()) ? cutoff.toISOString().slice(0, 10) : "";
 }
+
+const repoOf = (ref: IssueRef) => ref.slice(0, ref.lastIndexOf("#"));
 
 const stamp = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
 
@@ -171,7 +178,6 @@ async function syncDelta(token: string, cutoff: string): Promise<string> {
 
   const linked = await fetchNewlyLinked(token, from);
 
-  const repoOf = (ref: IssueRef) => ref.slice(0, ref.lastIndexOf("#"));
   const byRepo = new Map<string, RestIssue[]>();
   for (const item of changed) {
     const ref = restRef(item);
@@ -184,10 +190,12 @@ async function syncDelta(token: string, cutoff: string): Promise<string> {
     const key = storeKey(repo, cutoff);
     const store = await storage().getItem<RepoStore>(key);
     if (!store) continue;
-    const issues = applyChanges(store.issues, byRepo.get(repo) ?? [], before).map((i) =>
-      !i.hasPr && linked.has(i.ref) ? { ...i, hasPr: true } : i,
-    );
-    await storage().setItem(key, { ...store, issues });
+    const { issues, closed } = applyChanges(store, byRepo.get(repo) ?? [], before);
+    await storage().setItem(key, {
+      ...store,
+      issues: issues.map((i) => (!i.hasPr && linked.has(i.ref) ? { ...i, hasPr: true } : i)),
+      closed,
+    });
   }
 
   await storage().setItem(DELTA_KEY, { since: stamp(now) });
@@ -238,18 +246,93 @@ async function fetchNewlyLinked(token: string, from: string): Promise<Set<IssueR
 
 // An issue stays or enters when it is open and was created before the cutoff;
 // anything else (closed, or never qualifying) leaves. `hasPr` is kept from the
-// stored row: the issue search cannot tell, and the full load refreshes it.
-function applyChanges(issues: BoardIssue[], items: RestIssue[], before: number): BoardIssue[] {
-  const byRef = new Map(issues.map((i) => [i.ref, i]));
+// stored row: the issue search cannot tell, and the full load refreshes it. A
+// qualifying issue that closed moves to `closed`, a reopened one moves back.
+const MAX_CLOSED = 500;
+function applyChanges(
+  store: RepoStore,
+  items: RestIssue[],
+  before: number,
+): { issues: BoardIssue[]; closed: BoardIssue[] } {
+  const open = new Map(store.issues.map((i) => [i.ref, i]));
+  const closed = new Map((store.closed ?? []).map((i) => [i.ref, i]));
   for (const item of items) {
     const ref = restRef(item);
     if (!ref) continue;
-    const qualifies =
-      item.state === "open" && (!Number.isFinite(before) || Date.parse(item.created_at) < before);
-    if (qualifies) byRef.set(ref, toBoardIssue(item, ref, byRef.get(ref)?.hasPr ?? false));
-    else byRef.delete(ref);
+    const early = !Number.isFinite(before) || Date.parse(item.created_at) < before;
+    const hasPr = open.get(ref)?.hasPr ?? closed.get(ref)?.hasPr ?? false;
+    open.delete(ref);
+    closed.delete(ref);
+    if (!early) continue;
+    if (item.state === "open") open.set(ref, toBoardIssue(item, ref, hasPr));
+    else closed.set(ref, { ...toBoardIssue(item, ref, hasPr), closed: true });
   }
-  return [...byRef.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return {
+    issues: [...open.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    closed: [...closed.values()]
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, MAX_CLOSED),
+  };
+}
+
+// Watched issues the selected repo's list does not contain: open ones in other
+// repos, and closed ones. Answered from the stored backlogs where possible; the
+// rest (repos nobody opened yet, issues closed before a store existed, issues
+// outside the cutoff) is looked up on GitHub and cached per issue for everyone,
+// so the cost follows the distinct issues, not the number of people watching.
+const WATCHED_OPEN_TTL_MS = 5 * 60 * 1000;
+const WATCHED_CLOSED_TTL_MS = 60 * 60 * 1000;
+const watchedKey = (ref: IssueRef) =>
+  `watched:${createHash("sha1").update(ref).digest("hex").slice(0, 16)}`;
+
+export async function resolveWatched(
+  token: string,
+  config: Pick<EventConfig, "qualifyingBefore">,
+  refs: IssueRef[],
+): Promise<BoardIssue[]> {
+  const cutoff = cutoffDay(config);
+  const found = new Map<IssueRef, BoardIssue>();
+  const wanted = new Set(refs);
+
+  for (const repo of new Set(refs.map(repoOf))) {
+    const store = await storage().getItem<RepoStore>(storeKey(repo, cutoff));
+    // An expired store has missed changes; better to ask GitHub than to show
+    // an outcome that may be wrong.
+    if (!store || Date.now() - Date.parse(store.fullAt) > FULL_EVERY_MS) continue;
+    for (const i of [...store.issues, ...(store.closed ?? [])]) {
+      if (wanted.has(i.ref)) found.set(i.ref, i);
+    }
+  }
+
+  const missing: IssueRef[] = [];
+  for (const ref of refs) {
+    if (found.has(ref)) continue;
+    const hit = await storage().getItem<{ at: number; issue: BoardIssue | null }>(watchedKey(ref));
+    const ttl = hit?.issue?.closed ? WATCHED_CLOSED_TTL_MS : WATCHED_OPEN_TTL_MS;
+    if (hit && Date.now() - hit.at < ttl) {
+      if (hit.issue) found.set(ref, hit.issue);
+    } else {
+      missing.push(ref);
+    }
+  }
+
+  for (let i = 0; i < missing.length; i += MAX_WATCHED) {
+    const chunk = missing.slice(i, i + MAX_WATCHED);
+    const fetched = new Map((await fetchIssuesByRef(token, chunk)).map((b) => [b.ref, b]));
+    const at = Date.now();
+    for (const ref of chunk) {
+      // A miss (deleted, transferred, typo) is cached too, or it would be asked
+      // for on every poll.
+      const issue = fetched.get(ref) ?? null;
+      await storage().setItem(watchedKey(ref), { at, issue });
+      if (issue) found.set(ref, issue);
+    }
+  }
+
+  return refs.flatMap((r) => {
+    const issue = found.get(r);
+    return issue ? [issue] : [];
+  });
 }
 
 async function expireAllStores(): Promise<void> {

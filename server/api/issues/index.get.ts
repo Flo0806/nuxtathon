@@ -26,7 +26,8 @@ export default defineEventHandler(async (event): Promise<IssueBoard> => {
   // stays visible instead of silently disappearing.
   const open = new Set(issues.map((i) => i.ref));
   const gone = watching.filter((r) => !open.has(r));
-  const watchedExtra = gone.length > 0 ? await fetchClosedWatched(token, gone).catch(() => []) : [];
+  const watchedExtra =
+    gone.length > 0 ? await resolveWatched(token, config, gone).catch(() => []) : [];
 
   const cutoff = new Date(config.qualifyingBefore);
   return {
