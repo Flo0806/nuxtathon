@@ -9,6 +9,7 @@ interface CheckResult {
   summary: string;
   ms: number;
   cutoff: string;
+  registry: boolean;
   searches: { search: string; count: number }[];
   prs: {
     ref: IssueRef;
@@ -19,6 +20,7 @@ interface CheckResult {
     path: Path;
     reason: string;
     contributors: string[];
+    maintainers: string[];
     closes: { ref: IssueRef; createdAt: string; qualifies: boolean }[];
   }[];
 }
@@ -103,6 +105,14 @@ const day = (iso: string) => iso.slice(0, 16).replace("T", " ");
       <p class="panel px-4 py-3 font-mono text-[0.72rem] leading-relaxed text-mint">
         {{ result.summary }}
       </p>
+      <p
+        v-if="!result.registry"
+        class="panel px-4 py-3 font-mono text-[0.72rem] text-amber"
+        role="alert"
+      >
+        The module registry on nuxt.com did not answer, so nobody is treated as a maintainer in this
+        run.
+      </p>
 
       <div class="flex flex-col gap-1">
         <span class="font-mono text-[0.72rem] uppercase tracking-wider text-fg">
@@ -161,6 +171,9 @@ const day = (iso: string) => iso.slice(0, 16).replace("T", " ");
             <span class="w-48 truncate text-muted" :title="pr.contributors.join(', ')">
               @{{ pr.author }}
               <span v-if="pr.contributors.length > 1">+{{ pr.contributors.length - 1 }}</span>
+            </span>
+            <span v-if="pr.maintainers.length" class="text-amber">
+              maintainer {{ pr.maintainers.map((m) => `@${m}`).join(", ") }} (no automatic points)
             </span>
             <span
               v-if="pr.labels.some((l) => l.toLowerCase() === 'nuxtathon-v5')"

@@ -8,6 +8,7 @@ import type { IssueRef } from "#shared/types/issue-ref";
 import type { EventScope } from "#shared/types/scope";
 import type { IssueFacts, IssueFactsMap } from "#shared/types/scoring";
 import { HOME_REPO, issueRef, splitIssueRef } from "#shared/utils/issue-ref";
+import { registryMaintainers } from "./registry";
 
 interface PrAuthor {
   __typename: string;
@@ -395,9 +396,11 @@ async function searchPrsAcross(
 // Which way a PR counts. Shared by the admin check, the board and the review
 // queue, so what the check shows is what the board will do.
 //   auto:    closes at least one issue created before the cutoff; scored as in #1
-//   review:  in scope but closes nothing that qualifies; an organizer decides
+//   review:  in scope but closes nothing that qualifies, or opened by the
+//            maintainers of that very repo; an organizer decides
 //   ignored: nobody left to credit once bots are dropped, or core team only
-//            (core team is acknowledged on the board, never reviewed for points)
+//            without a qualifying issue (core team is acknowledged on the board,
+//            never reviewed for points)
 export type PrPath = "auto" | "review" | "ignored";
 
 export interface ClassifiedPr {
@@ -405,10 +408,18 @@ export interface ClassifiedPr {
   reason: string;
   qualifying: IssueRef[];
   closes: { ref: IssueRef; createdAt: string; qualifies: boolean }[];
+  // Who gets credit on the auto path: humans, minus maintainers of this repo.
   contributors: string[];
+  // Maintainers of this repo who worked on it and get no automatic credit.
+  maintainers: string[];
 }
 
-export function classifyPr(pr: PrNode, cutoff: number, coreTeam: Set<string>): ClassifiedPr {
+export function classifyPr(
+  pr: PrNode,
+  cutoff: number,
+  coreTeam: Set<string>,
+  repoMaintainers: Map<string, Set<string>>,
+): ClassifiedPr {
   const closes = pr.closingIssuesReferences.nodes.flatMap((n) => {
     const ref = refOf(n);
     return ref
@@ -416,21 +427,43 @@ export function classifyPr(pr: PrNode, cutoff: number, coreTeam: Set<string>): C
       : [];
   });
   const qualifying = closes.filter((c) => c.qualifies).map((c) => c.ref);
-  const contributors = [...collectContributors(pr).keys()];
-  const base = { qualifying, closes, contributors };
+  const humans = [...collectContributors(pr).keys()];
+  const n = qualifying.length;
+  const closesText = `closes ${n} qualifying ${n === 1 ? "issue" : "issues"}`;
 
-  if (contributors.length === 0) return { ...base, path: "ignored", reason: "bot" };
-  if (qualifying.length > 0) {
-    const n = qualifying.length;
+  if (humans.length === 0) {
     return {
-      ...base,
-      path: "auto",
-      reason: `closes ${n} qualifying ${n === 1 ? "issue" : "issues"}`,
+      qualifying,
+      closes,
+      contributors: [],
+      maintainers: [],
+      path: "ignored",
+      reason: "bot",
     };
   }
-  if (contributors.every((l) => coreTeam.has(l.toLowerCase()))) {
-    return { ...base, path: "ignored", reason: "core team" };
+
+  // Core team first: Daniel maintains many modules himself, and his PRs must
+  // neither land in his own review queue nor be reported as self-maintained.
+  const isCore = (l: string) => coreTeam.has(l.toLowerCase());
+  if (humans.every(isCore)) {
+    const base = { qualifying, closes, contributors: humans, maintainers: [] };
+    return n > 0
+      ? { ...base, path: "auto", reason: closesText }
+      : { ...base, path: "ignored", reason: "core team" };
   }
+
+  // Self-maintained: the rules exclude work on your own repo. Only the
+  // maintainers lose automatic credit; a community co-author keeps theirs.
+  const prRef = refOf(pr);
+  const own = prRef ? repoMaintainers.get(prRef.slice(0, prRef.lastIndexOf("#"))) : undefined;
+  const maintainers = humans.filter((l) => !isCore(l) && own?.has(l.toLowerCase()));
+  const contributors = humans.filter((l) => !maintainers.includes(l));
+  const base = { qualifying, closes, contributors, maintainers };
+
+  if (contributors.every(isCore)) {
+    return { ...base, path: "review", reason: "maintainer of this repository" };
+  }
+  if (n > 0) return { ...base, path: "auto", reason: closesText };
   return {
     ...base,
     path: "review",
@@ -453,9 +486,13 @@ export async function scopeCheck(
   const { prs, counts } = await searchPrsAcross(token, searches);
   const cutoff = Date.parse(config.qualifyingBefore);
   const core = new Set(config.coreTeam.map((l) => l.toLowerCase()));
+  const registry = await registryMaintainers();
   return {
     searches: counts,
     cutoff: config.qualifyingBefore,
+    // False when nuxt.com could not be reached: nobody is treated as a
+    // maintainer then, and the page says so.
+    registry: registry.ok,
     prs: prs
       .map((pr) => ({
         ref: refOf(pr)!,
@@ -463,7 +500,7 @@ export async function scopeCheck(
         createdAt: pr.createdAt,
         mergedAt: pr.mergedAt,
         labels: (pr.labels?.nodes ?? []).map((l) => l.name),
-        ...classifyPr(pr, cutoff, core),
+        ...classifyPr(pr, cutoff, core, registry.byRepo),
       }))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
   };
