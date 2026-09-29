@@ -34,3 +34,32 @@ export function normalizeScope(input: unknown, fallback: EventScope): EventScope
     registry: typeof raw.registry === "boolean" ? raw.registry : fallback.registry,
   };
 }
+
+const entries = (input: unknown): string[] =>
+  Array.isArray(input) ? input.map((v) => String(v ?? "").trim()).filter(Boolean) : [];
+
+// What is wrong with a submitted scope, or null. Unlike normalizeScope this
+// refuses instead of dropping, so a typo is reported to the admin rather than
+// silently shrinking the event.
+export function scopeError(input: { repos?: unknown; orgs?: unknown }): string | null {
+  const repos = entries(input.repos);
+  const orgs = entries(input.orgs);
+  const badRepo = repos.find((r) => !REPO.test(r.toLowerCase()));
+  if (badRepo) return `Not an owner/repo: "${badRepo}"`;
+  const badOrg = orgs.find((o) => !ORG.test(o.toLowerCase()));
+  if (badOrg) return `Not an organization name: "${badOrg}"`;
+  if (!repos.length && !orgs.length) return "Add at least one repository or organization.";
+  return null;
+}
+
+// One sentence for the admin preview and, later, the public rules.
+export function scopeSummary(scope: EventScope): string {
+  const parts = [
+    ...scope.repos,
+    ...scope.orgs.map((o) => `every repository of ${o}`),
+    ...(scope.registry ? ["modules from the Nuxt registry (submitted by link)"] : []),
+  ];
+  const list =
+    parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : (parts[0] ?? "");
+  return `Pull requests count in ${list}.`;
+}
