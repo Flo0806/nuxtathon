@@ -1,4 +1,5 @@
-import type { RuntimeState, Snapshot } from "#shared/types/event";
+import type { FinalResult, ManualCredit, RuntimeState, Snapshot } from "#shared/types/event";
+import { normalizeContributions, normalizeCreditIssue } from "#shared/utils/issue-ref";
 
 const RUNTIME_KEY = "runtime";
 const SNAPSHOTS_KEY = "snapshots";
@@ -12,10 +13,32 @@ const DEFAULT_STATE: RuntimeState = {
 };
 
 // Reads merge over defaults so a cold, empty store just works.
+//
+// Issue identities are normalized here, the one door every stored value passes:
+// results and credits from #1 hold bare nuxt/nuxt numbers. There is no separate
+// migration; the next admin write persists refs. Rolling back to a release before
+// refs after such a write would show them as raw strings, not lose them.
 export async function readRuntimeState(): Promise<RuntimeState> {
   const stored = await useStorage("state").getItem<RuntimeState>(RUNTIME_KEY);
-  return { ...DEFAULT_STATE, ...stored };
+  const state = { ...DEFAULT_STATE, ...stored };
+  return {
+    ...state,
+    credits: (state.credits ?? []).map(normalizeCredit),
+    final: state.final ? normalizeResult(state.final) : null,
+    archive: (state.archive ?? []).map(normalizeResult),
+  };
 }
+
+function normalizeCredit(stored: ManualCredit & { issueNumber?: unknown }): ManualCredit {
+  const { issueNumber: _legacy, issue: _raw, ...rest } = stored;
+  const issue = normalizeCreditIssue(stored);
+  return issue ? { ...rest, issue } : rest;
+}
+
+const normalizeResult = (r: FinalResult): FinalResult => ({
+  ...r,
+  contributions: normalizeContributions(r.contributions),
+});
 
 export async function writeRuntimeState(next: RuntimeState): Promise<void> {
   await useStorage("state").setItem(RUNTIME_KEY, next);

@@ -15,7 +15,7 @@ export default defineEventHandler(async () => {
   const result = await fetchLeaderboard(config, token);
 
   // Same order as the live endpoint: dedup manual credits against PR/marker closes
-  // first, then fold the remaining manual issue numbers into the frozen count so it
+  // first, then fold the remaining manual issues into the frozen count so it
   // matches what was on screen.
   const closed = new Set(result.closedIssues);
   const standings = applyCredits(result.entries, state.credits, closed, {
@@ -26,13 +26,13 @@ export default defineEventHandler(async () => {
   const contributions = { ...result.contributions };
 
   for (const c of state.credits) {
-    if (!c.issueNumber) continue;
-    closed.add(c.issueNumber);
+    if (!c.issue) continue;
+    closed.add(c.issue);
     const key = c.login.toLowerCase();
     const existing = standings.find((e) => e.login.toLowerCase() === key);
     const login = existing?.login ?? c.login;
     const bucket = (contributions[login] ??= { issues: [], prs: [] });
-    if (!bucket.issues.includes(c.issueNumber)) bucket.issues.push(c.issueNumber);
+    if (!bucket.issues.includes(c.issue)) bucket.issues.push(c.issue);
   }
 
   // Re-firing the same event (unfreeze, wait for late merges, fire again) must

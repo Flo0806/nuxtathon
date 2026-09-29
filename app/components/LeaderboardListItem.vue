@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { ContributionIds, LeaderboardEntry } from "#shared/types/event";
+import type { IssueRef } from "#shared/types/issue-ref";
+import { HOME_REPO, splitIssueRef } from "#shared/utils/issue-ref";
 
 const { entry, contributions, certificateBase } = defineProps<{
   entry: LeaderboardEntry;
@@ -13,15 +15,19 @@ const linkPrs = computed(() => githubList("pr", idsFor(entry, "prs")));
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-// Deep-link a user's credited issues/PRs by their exact nuxt/nuxt numbers.
-// Empty list -> no link (plain text), so the count still renders.
-function githubList(kind: "issue" | "pr", ids: number[]): string | null {
-  if (!ids.length) return null;
+// Deep-link a user's credited issues/PRs by their exact numbers. GitHub's list
+// search is per repo, so this only works while everything is in nuxt/nuxt; a
+// mixed list renders the count as plain text until the board knows about repos.
+function githubList(kind: "issue" | "pr", refs: IssueRef[]): string | null {
+  if (!refs.length) return null;
+  const parts = refs.map(splitIssueRef);
+  if (parts.some((p) => p.repo !== HOME_REPO)) return null;
   const path = kind === "pr" ? "pulls" : "issues";
-  return `https://github.com/nuxt/nuxt/${path}?q=${encodeURIComponent(ids.join(" "))}`;
+  const ids = parts.map((p) => p.number);
+  return `https://github.com/${HOME_REPO}/${path}?q=${encodeURIComponent(ids.join(" "))}`;
 }
 
-function idsFor(e: LeaderboardEntry, kind: "issues" | "prs"): number[] {
+function idsFor(e: LeaderboardEntry, kind: "issues" | "prs"): IssueRef[] {
   const c = contributions?.[e.login];
   return c?.[kind] ?? [];
 }

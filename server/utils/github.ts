@@ -4,7 +4,9 @@ import type {
   EventStats,
   LeaderboardEntry,
 } from "#shared/types/event";
+import type { IssueRef } from "#shared/types/issue-ref";
 import type { IssueFacts, IssueFactsMap } from "#shared/types/scoring";
+import { HOME_REPO, issueRef, splitIssueRef } from "#shared/utils/issue-ref";
 
 interface PrAuthor {
   __typename: string;
@@ -21,6 +23,7 @@ interface ContributorUser {
 
 interface IssueRefNode {
   number: number;
+  repository?: { nameWithOwner: string };
   createdAt: string;
   labels?: { nodes: { name: string }[] };
   reactions?: { totalCount: number };
@@ -28,6 +31,7 @@ interface IssueRefNode {
 
 interface PrNode {
   number: number;
+  repository?: { nameWithOwner: string };
   mergedAt: string;
   author: PrAuthor | null;
   closingIssuesReferences: { nodes: IssueRefNode[] };
@@ -35,6 +39,11 @@ interface PrNode {
   // GitHub accounts). `user` is null when the email is not linked to an account.
   commits: { nodes: { commit: { authors: { nodes: { user: ContributorUser | null }[] } } }[] };
 }
+
+// A closing reference can point into another repo, so the ref comes from the
+// node itself. Nodes without a repository (older cached shapes) are nuxt/nuxt.
+const refOf = (node: { number: number; repository?: { nameWithOwner: string } }): IssueRef | null =>
+  issueRef(node.repository?.nameWithOwner ?? HOME_REPO, node.number);
 
 // Scoring inputs for one issue, from either query: both select the same fields.
 function toIssueFacts(ref: Partial<IssueRefNode>): IssueFacts {
@@ -69,6 +78,9 @@ const SEARCH_QUERY = `
       nodes {
         ... on PullRequest {
           number
+          repository {
+            nameWithOwner
+          }
           mergedAt
           author {
             __typename
@@ -81,6 +93,9 @@ const SEARCH_QUERY = `
           closingIssuesReferences(first: 20) {
             nodes {
               number
+              repository {
+                nameWithOwner
+              }
               createdAt
               labels(first: 20) {
                 nodes {
@@ -201,30 +216,51 @@ async function graphql(token: string, query: string, variables: object): Promise
   return res.data;
 }
 
-// Confirm each number is a real issue in the core repo. Backs the manual-credit
-// save: a credit may only point at an issue that exists, so a fat-fingered number
-// can never slip into the closed-issue count. One batched query, alias per number.
-// GitHub answers a missing issue with a NOT_FOUND error *and* partial data (null
-// for that field), so we bypass the shared graphql() helper (which treats any
-// errors array as fatal) and classify per alias: resolved number -> valid, else
-// invalid. Field-level errors are expected here, not a hard failure.
+// One query for issues spread over several repos: an alias per repository and,
+// inside it, one per number. Owner and name come from validated refs, so they
+// are safe to interpolate. GitHub answers a missing issue with a NOT_FOUND error
+// *and* partial data (null for that field), which callers classify per alias.
+function batchedIssueQuery(refs: IssueRef[], selection: string) {
+  const byRepo = new Map<string, number[]>();
+  for (const ref of refs) {
+    const { repo, number } = splitIssueRef(ref);
+    byRepo.set(repo, [...(byRepo.get(repo) ?? []), number]);
+  }
+  const paths: { ref: IssueRef; repo: string; issue: string }[] = [];
+  const parts = [...byRepo].map(([repo, numbers], r) => {
+    const [owner, name] = repo.split("/");
+    const inner = numbers.map((n) => {
+      paths.push({ ref: `${repo}#${n}` as IssueRef, repo: `r${r}`, issue: `i${n}` });
+      return `i${n}: issue(number: ${n}) { ${selection} }`;
+    });
+    return `r${r}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { ${inner.join("\n")} }`;
+  });
+  return { query: `query { ${parts.join("\n")} }`, paths };
+}
+
+type RepoAliases<T> = Record<string, Record<string, T | null> | null>;
+
+// Confirm each ref is a real issue. Backs the manual-credit save: a credit may
+// only point at an issue that exists, so a fat-fingered number can never slip
+// into the closed-issue count. Bypasses the shared graphql() helper, which treats
+// any errors array as fatal; field-level NOT_FOUND is the expected answer here.
 export async function validateIssues(
   token: string,
-  numbers: number[],
-): Promise<{ valid: number[]; invalid: number[] }> {
-  const unique = [...new Set(numbers.filter((n) => Number.isInteger(n) && n > 0))];
+  refs: IssueRef[],
+): Promise<{ valid: IssueRef[]; invalid: IssueRef[] }> {
+  const unique = [...new Set(refs)];
   if (unique.length === 0) return { valid: [], invalid: [] };
 
-  const fields = unique.map((n) => `i${n}: issue(number: ${n}) { number }`).join("\n");
-  const query = `query { repository(owner: "nuxt", name: "nuxt") { ${fields} } }`;
-  const res = await post<{
-    data?: { repository?: Record<string, { number: number } | null> | null };
-  }>(token, query, {});
-  const repo = res?.data?.repository ?? null;
+  const { query, paths } = batchedIssueQuery(unique, "number");
+  const res = await post<{ data?: RepoAliases<{ number: number }> }>(token, query, {});
+  const data = res?.data ?? {};
 
-  const valid: number[] = [];
-  const invalid: number[] = [];
-  for (const n of unique) (repo?.[`i${n}`]?.number === n ? valid : invalid).push(n);
+  const valid: IssueRef[] = [];
+  const invalid: IssueRef[] = [];
+  for (const p of paths) {
+    const hit = data[p.repo]?.[p.issue]?.number === splitIssueRef(p.ref).number;
+    (hit ? valid : invalid).push(p.ref);
+  }
   return { valid, invalid };
 }
 
@@ -234,15 +270,15 @@ export async function validateIssues(
 // losing the whole board over it would be the wrong trade.
 export async function totalUpvotes(
   token: string,
-  closed: Iterable<number>,
+  closed: Iterable<IssueRef>,
   facts: IssueFactsMap,
 ): Promise<number> {
   let sum = 0;
-  const missing: number[] = [];
-  for (const n of closed) {
-    const f = facts[n];
+  const missing: IssueRef[] = [];
+  for (const ref of closed) {
+    const f = facts[ref];
     if (f) sum += f.upvotes;
-    else missing.push(n);
+    else missing.push(ref);
   }
   if (missing.length === 0) return sum;
   try {
@@ -253,23 +289,21 @@ export async function totalUpvotes(
   }
 }
 
-// One batched request with an alias per number, like validateIssues. Bounded
-// because the alias list goes into the query text.
-async function fetchIssueUpvotes(token: string, numbers: number[]): Promise<number> {
-  const unique = [...new Set(numbers.filter((n) => Number.isInteger(n) && n > 0))].slice(0, 100);
+// Bounded because the alias list goes into the query text.
+async function fetchIssueUpvotes(token: string, refs: IssueRef[]): Promise<number> {
+  const unique = [...new Set(refs)].slice(0, 100);
   if (unique.length === 0) return 0;
 
-  const fields = unique
-    .map((n) => `i${n}: issue(number: ${n}) { reactions(content: THUMBS_UP) { totalCount } }`)
-    .join("\n");
-  const query = `query { repository(owner: "nuxt", name: "nuxt") { ${fields} } }`;
-  const res = await post<{
-    data?: { repository?: Record<string, { reactions?: { totalCount: number } } | null> | null };
-  }>(token, query, {});
-  const repo = res?.data?.repository ?? null;
+  const { query, paths } = batchedIssueQuery(unique, "reactions(content: THUMBS_UP) { totalCount }");
+  const res = await post<{ data?: RepoAliases<{ reactions?: { totalCount: number } }> }>(
+    token,
+    query,
+    {},
+  );
+  const data = res?.data ?? {};
 
   let sum = 0;
-  for (const n of unique) sum += repo?.[`i${n}`]?.reactions?.totalCount ?? 0;
+  for (const p of paths) sum += data[p.repo]?.[p.issue]?.reactions?.totalCount ?? 0;
   return sum;
 }
 
@@ -341,6 +375,9 @@ const MARKER_QUERY = `
       nodes {
         ... on Issue {
           number
+          repository {
+            nameWithOwner
+          }
           createdAt
           labels(first: 20) {
             nodes {
@@ -385,11 +422,11 @@ async function fetchMarkerCredits(
   to: string,
   keyword: string,
   authors: Set<string>,
-): Promise<{ issueNumber: number; logins: string[]; facts: IssueFacts }[]> {
+): Promise<{ issue: IssueRef; logins: string[]; facts: IssueFacts }[]> {
   const search = `${REPO} is:issue is:closed closed:${toGithubStamp(from)}..${toGithubStamp(to)}`;
   const fromMs = Date.parse(from);
   const toMs = Date.parse(to);
-  const out: { issueNumber: number; logins: string[]; facts: IssueFacts }[] = [];
+  const out: { issue: IssueRef; logins: string[]; facts: IssueFacts }[] = [];
   let after: string | null = null;
 
   for (let page = 0; page < MAX_PAGES; page++) {
@@ -397,7 +434,8 @@ async function fetchMarkerCredits(
       search: MarkerPage;
     };
     for (const issue of result.nodes) {
-      if (typeof issue.number !== "number") continue;
+      const ref = typeof issue.number === "number" ? refOf({ ...issue, number: issue.number }) : null;
+      if (!ref) continue;
       const logins = new Set<string>();
       for (const comment of issue.comments?.nodes ?? []) {
         if (!comment.author || !authors.has(comment.author.login.toLowerCase())) continue;
@@ -410,7 +448,7 @@ async function fetchMarkerCredits(
       }
       if (logins.size > 0) {
         out.push({
-          issueNumber: issue.number,
+          issue: ref,
           logins: [...logins],
           facts: toIssueFacts(issue),
         });
@@ -449,8 +487,8 @@ interface Tally {
   login: string;
   name: string | null;
   avatarUrl: string;
-  issues: Set<number>;
-  prs: Set<number>;
+  issues: Set<IssueRef>;
+  prs: Set<IssueRef>;
 }
 
 // Everyone who worked on a PR: its linked commit authors (which include
@@ -505,10 +543,10 @@ export async function fetchLeaderboard(
   entries: LeaderboardEntry[];
   coreTeam: LeaderboardEntry[];
   stats: EventStats;
-  // Issue numbers closed by event PRs, exposed so the endpoint can dedup manual
-  // credits against them before counting.
-  closedIssues: number[];
-  // Per-login credited issue/PR numbers (deep-linking + reuse).
+  // Issues closed by event PRs, exposed so the endpoint can dedup manual credits
+  // against them before counting.
+  closedIssues: IssueRef[];
+  // Per-login credited issues and PRs (deep-linking + reuse).
   contributions: ContributionIds;
   // Age, labels and upvotes of every closed issue, for weighted scoring.
   issueFacts: IssueFactsMap;
@@ -526,20 +564,22 @@ export async function fetchLeaderboard(
   // created. Scoring below still credits only pre-announcement issues, but the
   // visible counter should tick for anything resolved during the event, including
   // issues opened mid-event (Daniel files a fresh bug, someone fixes it same day).
-  const closedInWindow = new Set<number>();
+  const closedInWindow = new Set<IssueRef>();
 
   const issueFacts: IssueFactsMap = {};
 
   for (const pr of prs) {
-    for (const ref of pr.closingIssuesReferences.nodes) {
-      closedInWindow.add(ref.number);
-      issueFacts[ref.number] = toIssueFacts(ref);
+    const prRef = refOf(pr);
+    if (!prRef) continue;
+    const qualifying: IssueRef[] = [];
+    for (const node of pr.closingIssuesReferences.nodes) {
+      const ref = refOf(node);
+      if (!ref) continue;
+      closedInWindow.add(ref);
+      issueFacts[ref] = toIssueFacts(node);
+      if (Date.parse(node.createdAt) < cutoff) qualifying.push(ref);
     }
-    const qualifying = pr.closingIssuesReferences.nodes.filter(
-      (issue) => Date.parse(issue.createdAt) < cutoff,
-    );
     if (qualifying.length === 0) continue;
-    const issueNumbers = qualifying.map((issue) => issue.number);
 
     // Full credit for every contributor; issues are deduped per person via the
     // set, so the same issue counts once even across several of their PRs.
@@ -553,11 +593,11 @@ export async function fetchLeaderboard(
         login: contributor.login,
         name: contributor.name,
         avatarUrl: contributor.avatarUrl,
-        issues: new Set<number>(),
-        prs: new Set<number>(),
+        issues: new Set<IssueRef>(),
+        prs: new Set<IssueRef>(),
       };
-      for (const n of issueNumbers) tally.issues.add(n);
-      tally.prs.add(pr.number);
+      for (const ref of qualifying) tally.issues.add(ref);
+      tally.prs.add(prRef);
       target.set(key, tally);
     }
   }
@@ -580,10 +620,10 @@ export async function fetchLeaderboard(
   // Marker-credited logins (which carry no name) awaiting a GitHub lookup.
   const missingNames = new Map<string, Tally>();
 
-  for (const { issueNumber, logins, facts } of markers) {
-    if (closedInWindow.has(issueNumber)) continue;
-    closedInWindow.add(issueNumber);
-    issueFacts[issueNumber] = facts;
+  for (const { issue, logins, facts } of markers) {
+    if (closedInWindow.has(issue)) continue;
+    closedInWindow.add(issue);
+    issueFacts[issue] = facts;
     for (const login of logins) {
       if (isBotLogin(login)) continue;
       // Same case-insensitive keying: a marker "@norbiros" merges into the PR's
@@ -595,10 +635,10 @@ export async function fetchLeaderboard(
         login,
         name: null,
         avatarUrl: `https://github.com/${login}.png?size=80`,
-        issues: new Set<number>(),
-        prs: new Set<number>(),
+        issues: new Set<IssueRef>(),
+        prs: new Set<IssueRef>(),
       };
-      tally.issues.add(issueNumber);
+      tally.issues.add(issue);
       target.set(key, tally);
       // Marker credits start with a name-less tally; back-fill the display name + avatar from GitHub.
       if (isNew) missingNames.set(key, tally);
@@ -628,14 +668,14 @@ export async function fetchLeaderboard(
   // Community demand behind the closed issues. Every issue here came from a
   // query that already selected its reactions, so this costs nothing extra.
   let upvotes = 0;
-  for (const n of closedInWindow) upvotes += issueFacts[n]?.upvotes ?? 0;
+  for (const ref of closedInWindow) upvotes += issueFacts[ref]?.upvotes ?? 0;
   const merged = prs.filter((pr) => isHuman(pr.author)).length;
   const submitted = await countHumanPrs(
     token,
     `${REPO} is:pr created:${toGithubStamp(from)}..${toGithubStamp(to)}`,
   );
 
-  const contributions: Record<string, { issues: number[]; prs: number[] }> = {};
+  const contributions: ContributionIds = {};
   for (const m of [byLogin, coreByLogin]) {
     for (const tally of m.values()) {
       contributions[tally.login] = {

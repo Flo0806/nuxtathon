@@ -1,3 +1,4 @@
+import type { IssueRef } from "./issue-ref";
 import type { ScoringRules } from "./scoring";
 
 // Static, committed event configuration (source: config/event.json).
@@ -114,9 +115,10 @@ export type EventSettings = Partial<Pick<EventConfig, SettingsKey>>;
 // Coarse lifecycle that drives what the public site shows.
 export type EventPhase = "upcoming" | "live" | "evaluating" | "results";
 
-// Per-login GitHub issue/pr ids a user is credited with.
+// Per-login issues and PRs a user is credited with. Stored #1 results hold bare
+// numbers; readRuntimeState normalizes them, so code only ever sees refs.
 export interface ContributionIds {
-  [login: string]: { issues: number[]; prs: number[] };
+  [login: string]: { issues: IssueRef[]; prs: IssueRef[] };
 }
 
 export interface LeaderboardEntry {
@@ -157,9 +159,10 @@ export interface ManualCredit {
   login: string;
   amount: number;
   note: string;
-  // Optional nuxt/nuxt issue this credit stands for. Validated on save; when set,
-  // it folds into the public "Issues closed" count (deduped against PR-closed).
-  issueNumber?: number;
+  // Optional issue this credit stands for. Validated on save; when set, it folds
+  // into the public "Issues closed" count (deduped against PR-closed). Credits
+  // stored before refs carry `issueNumber` instead, normalized on read.
+  issue?: IssueRef;
 }
 
 // Curated Phosphor icons an award may carry. Rendered on the site via UnoCSS

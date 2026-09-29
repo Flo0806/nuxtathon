@@ -53,7 +53,7 @@ export default defineCachedEventHandler(
 
     // PR + marker closed issues. Passed to applyCredits first (so a manual credit
     // for an already-covered issue is dropped, not double-scored), then the
-    // remaining manual issue numbers are folded in for the headline count.
+    // remaining manual issues are folded in for the headline count.
     const closed = new Set(result.closedIssues);
     const entries = applyCredits(result.entries, state.credits, closed, {
       rules: config.scoring,
@@ -63,13 +63,13 @@ export default defineCachedEventHandler(
     const contributions = { ...result.contributions };
 
     for (const c of state.credits) {
-      if (!c.issueNumber) continue;
-      closed.add(c.issueNumber);
+      if (!c.issue) continue;
+      closed.add(c.issue);
       const key = c.login.toLowerCase();
       const existing = entries.find((e) => e.login.toLowerCase() === key);
       const login = existing?.login ?? c.login;
       const bucket = (contributions[login] ??= { issues: [], prs: [] });
-      if (!bucket.issues.includes(c.issueNumber)) bucket.issues.push(c.issueNumber);
+      if (!bucket.issues.includes(c.issue)) bucket.issues.push(c.issue);
     }
 
     const stats = {
