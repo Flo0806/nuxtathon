@@ -232,6 +232,7 @@ async function post<T>(token: string, query: string, variables: object): Promise
   // The whole query, not a prefix: some embed their search string further in,
   // and the budget counter needs it to name the call.
   const label = String((variables as { search?: string }).search ?? query);
+  const started = Date.now();
   try {
     const res = await $fetch.raw<T>(GITHUB_GRAPHQL, {
       method: "POST",
@@ -239,11 +240,17 @@ async function post<T>(token: string, query: string, variables: object): Promise
       body: { query, variables },
     });
     const errors = (res._data as { errors?: { type?: string }[] } | undefined)?.errors;
-    recordBudget(res.headers, label, Boolean(errors?.some((e) => e.type === "RATE_LIMITED")));
+    recordBudget(res.headers, label, {
+      limited: Boolean(errors?.some((e) => e.type === "RATE_LIMITED")),
+      ms: Date.now() - started,
+    });
     return res._data as T;
   } catch (e) {
     const err = e as { statusCode?: number; response?: { headers?: Headers } };
-    recordBudget(err.response?.headers, label, err.statusCode === 403 || err.statusCode === 429);
+    recordBudget(err.response?.headers, label, {
+      limited: err.statusCode === 403 || err.statusCode === 429,
+      ms: Date.now() - started,
+    });
     throw createError({
       statusCode: 502,
       statusMessage: `GitHub responded ${err.statusCode ?? "error"}`,
@@ -766,14 +773,18 @@ interface MarkerPage {
 // authors are honored, so nobody farms points by self-mentioning under a random
 // closed issue. Both the close and the marker comment must fall inside the
 // window. Returns one entry per marked issue with its credited logins.
-async function fetchMarkerCredits(
+export async function fetchMarkerCredits(
   token: string,
   from: string,
   to: string,
   keyword: string,
   authors: Set<string>,
 ): Promise<{ issue: IssueRef; logins: string[]; facts: IssueFacts }[]> {
-  const search = `${REPO} is:issue is:closed closed:${toGithubStamp(from)}..${toGithubStamp(to)}`;
+  // Only issues whose comments contain the marker phrase: the check below still
+  // decides (author, time, handles), this just spares fetching every other
+  // closed issue with its comments. Quotes in the keyword would end the phrase.
+  const phrase = keyword.replace(/"/g, " ").trim();
+  const search = `${REPO} is:issue is:closed closed:${toGithubStamp(from)}..${toGithubStamp(to)} "${phrase}" in:comments`;
   const fromMs = Date.parse(from);
   const toMs = Date.parse(to);
   const out: { issue: IssueRef; logins: string[]; facts: IssueFacts }[] = [];
@@ -914,10 +925,33 @@ export async function fetchLeaderboard(
     config.scope,
     `is:pr is:merged created:${toGithubStamp(from)}..${toGithubStamp(to)}`,
   );
-  const [{ prs }, registry] = await Promise.all([
-    searchPrsAcross(token, searches),
+  // The PR searches, the marker search and the PR count do not depend on each
+  // other, so they run side by side; one after another they took ~23 s for the
+  // #1 weekend (measured 2026-09-30), and the first visitor after the cache
+  // expires waits for all of it. Pages within one search still follow cursors.
+  const markerAuthors = new Set((config.markerAuthors ?? []).map((l) => l.toLowerCase()));
+  const markerTo = window?.to ?? new Date().toISOString();
+  const markersPending =
+    config.closeMarker && markerAuthors.size > 0
+      ? fetchMarkerCredits(token, from, markerTo, config.closeMarker, markerAuthors)
+      : Promise.resolve([]);
+  const submittedPending = Promise.all(
+    scopeSearches(config.scope, `is:pr created:${toGithubStamp(from)}..${toGithubStamp(to)}`).map(
+      (search) => countHumanPrs(token, search),
+    ),
+  ).then((counts) => counts.reduce((a, b) => a + b, 0));
+  // Settle the side runs before anything can throw, so none of them is left
+  // as an unhandled rejection when an earlier await fails.
+  markersPending.catch(() => undefined);
+  submittedPending.catch(() => undefined);
+
+  const [found, registry] = await Promise.all([
+    Promise.all(searches.map((search) => searchPrsAcross(token, [search]))),
     registryMaintainers(),
   ]);
+  // A PR can only turn up once per search, and searches do not overlap, but a
+  // map keeps that an invariant rather than an assumption.
+  const prs = [...new Map(found.flatMap((f) => f.prs).map((pr) => [refOf(pr), pr])).values()];
 
   const byLogin = new Map<string, Tally>();
   const coreByLogin = new Map<string, Tally>();
@@ -980,12 +1014,7 @@ export async function fetchLeaderboard(
   // evaluating phase exists precisely to work through what is left. Firing ends
   // it without a stored cutoff, because a fired event is served from its frozen
   // result and never recomputed.
-  const markerAuthors = new Set((config.markerAuthors ?? []).map((l) => l.toLowerCase()));
-  const markerTo = window?.to ?? new Date().toISOString();
-  const markers =
-    config.closeMarker && markerAuthors.size > 0
-      ? await fetchMarkerCredits(token, from, markerTo, config.closeMarker, markerAuthors)
-      : [];
+  const markers = await markersPending;
 
   // Marker-credited logins (which carry no name) awaiting a GitHub lookup.
   const missingNames = new Map<string, Tally>();
@@ -1043,13 +1072,7 @@ export async function fetchLeaderboard(
   // Every PR opened in the window across the scope, merged or not. The searches
   // never overlap (scopeSearches drops repos inside listed orgs), so the counts
   // add up without double counting.
-  let submitted = 0;
-  for (const search of scopeSearches(
-    config.scope,
-    `is:pr created:${toGithubStamp(from)}..${toGithubStamp(to)}`,
-  )) {
-    submitted += await countHumanPrs(token, search);
-  }
+  const submitted = await submittedPending;
 
   const contributions: ContributionIds = {};
   for (const m of [byLogin, coreByLogin]) {

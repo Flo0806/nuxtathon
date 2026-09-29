@@ -23,24 +23,35 @@ export interface BudgetCall {
   // The search string or query as sent, for the tooltip.
   raw: string;
   // Points (GraphQL) or requests (REST) this call used, when it can be told
-  // from the previous reading in the same window.
+  // from the previous reading in the same window. GitHub only reports what is
+  // left, so calls answering out of order (the board runs its searches side by
+  // side) can swap their shares; the sum over a run is exact.
   cost: number | null;
   remaining: number;
   // GitHub refused the call for its budget.
   limited: boolean;
+  // Round trip in milliseconds, to tell a slow GitHub from a heavy query.
+  ms: number | null;
 }
 
 const MAX_CALLS = 60;
 const readings: Partial<Record<BudgetResource, BudgetReading>> = {};
 const calls: BudgetCall[] = [];
 
-// `purpose` names the call when its text alone is ambiguous (the random-issue
-// button searches exactly like Flo's list does for nuxt/nuxt).
+interface CallInfo {
+  // GitHub refused the call for its budget.
+  limited?: boolean;
+  // Names the call when its text alone is ambiguous (the random-issue button
+  // searches exactly like Flo's list does for nuxt/nuxt).
+  purpose?: string;
+  // How long GitHub took to answer.
+  ms?: number;
+}
+
 export function recordBudget(
   headers: Headers | undefined,
   label: string,
-  limited = false,
-  purpose?: string,
+  { limited = false, purpose, ms }: CallInfo = {},
 ): void {
   const resource = headers?.get("x-ratelimit-resource") as BudgetResource | null;
   const remaining = Number(headers?.get("x-ratelimit-remaining"));
@@ -69,6 +80,7 @@ export function recordBudget(
     cost,
     remaining,
     limited,
+    ms: ms ?? null,
   });
   calls.length = Math.min(calls.length, MAX_CALLS);
 }

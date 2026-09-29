@@ -30,6 +30,7 @@ export interface RestIssue {
 }
 
 export async function restSearchPage(token: string, q: string, page: number) {
+  const started = Date.now();
   try {
     const res = await $fetch.raw<{ total_count: number; items: RestIssue[] }>(
       "https://api.github.com/search/issues",
@@ -42,11 +43,14 @@ export async function restSearchPage(token: string, q: string, page: number) {
         },
       },
     );
-    recordBudget(res.headers, q);
+    recordBudget(res.headers, q, { ms: Date.now() - started });
     return res._data!;
   } catch (e) {
     const err = e as { statusCode?: number; response?: { headers?: Headers } };
-    recordBudget(err.response?.headers, q, err.statusCode === 403 || err.statusCode === 429);
+    recordBudget(err.response?.headers, q, {
+      limited: err.statusCode === 403 || err.statusCode === 429,
+      ms: Date.now() - started,
+    });
     throw createError({
       statusCode: 502,
       statusMessage: `GitHub responded ${err.statusCode ?? "error"}`,

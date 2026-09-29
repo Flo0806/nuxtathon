@@ -17,6 +17,7 @@ interface Call {
   cost: number | null;
   remaining: number;
   limited: boolean;
+  ms: number | null;
 }
 type Tier = "full" | "saving" | "tight" | "critical";
 interface Budget {
@@ -116,14 +117,16 @@ const entries = computed(
     >
       <p class="text-faint">
         What the site asked GitHub for, newest first (UTC). Cost is points for GraphQL, requests for
-        search and REST; "?" when there is no earlier reading to compare. Left is what remained
-        after the call. Hover a row for the exact query.
+        search and REST; "?" when there is no earlier reading to compare. Calls that run at the same
+        time can swap their costs; the total is right. Left is what remained after the call. Hover a
+        row for the exact query.
       </p>
       <p class="flex gap-2 uppercase tracking-wider text-faint">
         <span class="w-10 shrink-0">time</span>
         <span class="w-14 shrink-0">budget</span>
         <span class="w-12 shrink-0 text-right">cost</span>
         <span class="w-12 shrink-0 text-right">left</span>
+        <span class="w-12 shrink-0 text-right">took</span>
         <span>for</span>
       </p>
       <p v-for="c in budget.calls" :key="c.at + c.raw" class="flex gap-2" :title="c.raw">
@@ -133,6 +136,9 @@ const entries = computed(
           {{ c.limited ? "refused" : (c.cost ?? "?") }}
         </span>
         <span class="w-12 shrink-0 text-right">{{ c.remaining }}</span>
+        <span class="w-12 shrink-0 text-right" :class="(c.ms ?? 0) > 5000 ? 'text-amber' : ''">
+          {{ c.ms === null ? "" : `${(c.ms / 1000).toFixed(1)}s` }}
+        </span>
         <span class="truncate">{{ c.label }}</span>
       </p>
     </div>

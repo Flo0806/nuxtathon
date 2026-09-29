@@ -45,18 +45,16 @@ async function searchIssues(
         },
       },
     );
-    recordBudget(res.headers, q, false, "random issue button");
+    recordBudget(res.headers, q, { purpose: "random issue button" });
     return res._data!;
   } catch (e) {
     // Same rule as the GraphQL helper: never pass GitHub's status through, or a
     // 401 from a bad token reads as our own auth failing.
     const err = e as { statusCode?: number; response?: { headers?: Headers } };
-    recordBudget(
-      err.response?.headers,
-      q,
-      err.statusCode === 403 || err.statusCode === 429,
-      "random issue button",
-    );
+    recordBudget(err.response?.headers, q, {
+      limited: err.statusCode === 403 || err.statusCode === 429,
+      purpose: "random issue button",
+    });
     throw createError({
       statusCode: 502,
       statusMessage: `GitHub responded ${err.statusCode ?? "error"}`,
