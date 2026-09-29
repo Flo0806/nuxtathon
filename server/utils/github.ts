@@ -6,7 +6,9 @@ import type {
 } from "#shared/types/event";
 import type { IssueRef } from "#shared/types/issue-ref";
 import type { EventScope } from "#shared/types/scope";
-import type { IssueFacts, IssueFactsMap } from "#shared/types/scoring";
+import type { ReviewItem } from "#shared/types/review";
+import { V5_LABEL } from "#shared/types/review";
+import type { IssueFacts, IssueFactsMap, ScoringRules } from "#shared/types/scoring";
 import { HOME_REPO, issueRef, splitIssueRef } from "#shared/utils/issue-ref";
 import { registryMaintainers } from "./registry";
 
@@ -33,6 +35,7 @@ interface IssueRefNode {
 
 interface PrNode {
   number: number;
+  title?: string;
   repository?: { nameWithOwner: string };
   createdAt: string;
   mergedAt: string;
@@ -76,6 +79,7 @@ const REPO = "repo:nuxt/nuxt";
 const PR_FIELDS = `
         ... on PullRequest {
           number
+          title
           repository {
             nameWithOwner
           }
@@ -453,6 +457,34 @@ export function classifyPr(
   };
 }
 
+// Who would get the points if an organizer confirms: the non-core contributors,
+// or, when the maintainers opened it alone, the maintainers themselves (that is
+// exactly the case the organizer is asked about).
+function toReviewItem(
+  pr: PrNode,
+  ref: IssueRef,
+  verdict: ClassifiedPr,
+  rules: ScoringRules,
+  coreTeam: Set<string>,
+): ReviewItem {
+  const community = verdict.contributors.filter((l) => !coreTeam.has(l.toLowerCase()));
+  const labels = (pr.labels?.nodes ?? []).map((l) => l.name);
+  const base = rules.prPoints.enabled ? rules.prPoints.points : 1;
+  const v5 = labels.some((l) => l.toLowerCase() === V5_LABEL);
+  return {
+    ref,
+    title: pr.title ?? "",
+    author: pr.author?.login ?? "ghost",
+    people: community.length ? community : verdict.maintainers,
+    reason: verdict.reason,
+    maintainers: verdict.maintainers,
+    labels,
+    createdAt: pr.createdAt,
+    mergedAt: pr.mergedAt,
+    suggested: v5 ? base * 2 : base,
+  };
+}
+
 // Admin debug view: what the scope finds for a window and which way each PR
 // would count, before any of it reaches the board.
 export async function scopeCheck(
@@ -706,6 +738,8 @@ export async function fetchLeaderboard(
   contributions: ContributionIds;
   // Age, labels and upvotes of every closed issue, for weighted scoring.
   issueFacts: IssueFactsMap;
+  // In-scope PRs that need an organizer's decision.
+  review: ReviewItem[];
 }> {
   const from = window?.from ?? config.startsAt;
   const to = window?.to ?? config.endsAt;
@@ -729,6 +763,7 @@ export async function fetchLeaderboard(
   // visible counter should tick for anything resolved during the event, including
   // issues opened mid-event (Daniel files a fresh bug, someone fixes it same day).
   const closedInWindow = new Set<IssueRef>();
+  const review: ReviewItem[] = [];
 
   const issueFacts: IssueFactsMap = {};
 
@@ -744,6 +779,10 @@ export async function fetchLeaderboard(
     // Same verdict the admin scope check shows. Only the automatic path scores
     // here; review-path PRs count once an organizer confirms them.
     const verdict = classifyPr(pr, cutoff, coreSet, registry.byRepo);
+    if (verdict.path === "review") {
+      review.push(toReviewItem(pr, prRef, verdict, config.scoring, coreSet));
+      continue;
+    }
     if (verdict.path !== "auto") continue;
     const qualifying = verdict.qualifying;
     const credited = new Set(verdict.contributors.map((l) => l.toLowerCase()));
@@ -866,5 +905,6 @@ export async function fetchLeaderboard(
     closedIssues: [...closedInWindow],
     contributions,
     issueFacts,
+    review: review.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
   };
 }

@@ -85,6 +85,9 @@ export default defineCachedEventHandler(
       upvotes: await totalUpvotes(token, closed, result.issueFacts),
     };
 
+    // Same computation, so the queue always matches what the board scored.
+    await writeReviewQueue(result.review, fetchedAt);
+
     await appendSnapshot(
       entries.map((entry) => entry.login),
       fetchedAt,

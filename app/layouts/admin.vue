@@ -4,6 +4,7 @@ const TABS = [
   { to: "/admin/nuxtathon", label: "Event", icon: "i-ph-lightning" },
   { to: "/admin/settings", label: "Settings", icon: "i-ph-sliders-horizontal" },
   { to: "/admin/awards", label: "Awards", icon: "i-ph-trophy" },
+  { to: "/admin/review", label: "Review", icon: "i-ph-list-checks" },
   { to: "/admin/scope", label: "Scope check", icon: "i-ph-magnifying-glass" },
 ];
 

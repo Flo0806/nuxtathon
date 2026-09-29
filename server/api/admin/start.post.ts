@@ -31,6 +31,7 @@ export default defineEventHandler(async (event) => {
   });
   await writeRuntimeState({ prizesReleased: false, credits: [], final: null, archive });
   await clearSnapshots();
+  await clearReviewQueue();
   await clearAnnounceState();
   await invalidateLeaderboardCache();
   if (body?.announce) {
