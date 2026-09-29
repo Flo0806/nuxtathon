@@ -23,7 +23,10 @@ export interface BoardIssue {
 }
 
 export interface IssueBoard {
+  // How current `issues` is, not when this response was built.
   fetchedAt: string;
+  // GitHub did not answer; `issues` is the last list that loaded.
+  stale: boolean;
   // The repo `issues` comes from, and every repo the list can switch to.
   repo: string;
   repos: string[];

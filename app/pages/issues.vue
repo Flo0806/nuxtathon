@@ -293,6 +293,7 @@ useSeoMeta({ title: "Nuxtathon - Issue list", robots: "noindex" });
       </div>
 
       <p class="font-mono text-[0.62rem] uppercase tracking-wider text-muted">
+        <span v-if="board.stale" class="text-amber">GitHub is not answering right now.</span>
         Updated {{ new Date(board.fetchedAt).toISOString().slice(11, 16) }} UTC, and again every
         five minutes while this page is open. Watching is private and reserves nothing.
       </p>

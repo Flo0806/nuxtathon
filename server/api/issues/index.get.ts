@@ -17,7 +17,7 @@ export default defineEventHandler(async (event): Promise<IssueBoard> => {
   if (!repos.includes(repo)) {
     throw createError({ statusCode: 422, statusMessage: `Not a repo on this list: ${repo}` });
   }
-  const issues = await fetchIssueBoard(token, boardQuery(config, repo));
+  const { issues, syncedAt, stale } = await readIssueBoard(token, config, repo);
   const { watching, seen } = await readWatch(user.login);
 
   // Anything on the watch list that this search does not return lives in another
@@ -30,7 +30,8 @@ export default defineEventHandler(async (event): Promise<IssueBoard> => {
 
   const cutoff = new Date(config.qualifyingBefore);
   return {
-    fetchedAt: new Date().toISOString(),
+    fetchedAt: syncedAt,
+    stale,
     repo,
     repos,
     createdBefore: Number.isFinite(cutoff.getTime()) ? cutoff.toISOString().slice(0, 10) : "",

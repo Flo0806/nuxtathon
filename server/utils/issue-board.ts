@@ -4,18 +4,19 @@ import { HOME_REPO, issueRef, normalizeIssueRefs, parseIssueRef } from "#shared/
 import { issueSearchQuery } from "#shared/utils/issue-search";
 import { batchedIssueQuery, githubQuery, type RepoAliases } from "./github";
 
-const PER_PAGE = 100;
-// 500 issues of headroom over the ~280 that qualify today; GitHub's search stops
-// at 1000 regardless.
-const MAX_PAGES = 5;
+export const PER_PAGE = 100;
+// 500 issues of headroom over the ~280 that qualify in nuxt/nuxt today; GitHub's
+// search stops at 1000 regardless.
+export const MAX_PAGES = 5;
 // A watch list is a working aid, not an archive. The cap also keeps the batched
 // alias query for closed entries to a sane size.
 export const MAX_WATCHED = 100;
 
-interface RestIssue {
+export interface RestIssue {
   number: number;
-  // "https://api.github.com/repos/<owner>/<repo>"; the search spans repos later.
+  // "https://api.github.com/repos/<owner>/<repo>"; the delta search spans repos.
   repository_url: string;
+  state: "open" | "closed";
   title: string;
   html_url: string;
   created_at: string;
@@ -27,7 +28,7 @@ interface RestIssue {
   reactions?: { "+1"?: number };
 }
 
-async function search(token: string, q: string, page: number) {
+export async function restSearchPage(token: string, q: string, page: number) {
   try {
     return await $fetch<{ total_count: number; items: RestIssue[] }>(
       "https://api.github.com/search/issues",
@@ -46,52 +47,50 @@ async function search(token: string, q: string, page: number) {
   }
 }
 
-async function searchAll(token: string, q: string): Promise<RestIssue[]> {
+export async function restSearchAll(token: string, q: string): Promise<RestIssue[]> {
   const out: RestIssue[] = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const { items } = await search(token, q, page);
+    const { items } = await restSearchPage(token, q, page);
     out.push(...items);
     if (items.length < PER_PAGE) break;
   }
   return out;
 }
 
-// The whole eligible backlog, oldest first. A second search marks the ones a PR
-// already references; that set is small, so it is cheaper than asking per issue.
-export const fetchIssueBoard = defineCachedFunction(
-  async (token: string, query: string): Promise<BoardIssue[]> => {
-    const [all, linked] = await Promise.all([
-      searchAll(token, query),
-      searchAll(token, `${query} linked:pr`),
-    ]);
-    const withPr = new Set(linked.map(restRef));
-
-    return all.flatMap((i) => {
-      const ref = restRef(i);
-      if (!ref) return [];
-      return [
-        {
-          ref,
-          number: i.number,
-          title: i.title,
-          url: i.html_url,
-          author: i.user?.login ?? "ghost",
-          createdAt: i.created_at,
-          updatedAt: i.updated_at,
-          comments: i.comments,
-          upvotes: i.reactions?.["+1"] ?? 0,
-          labels: i.labels.map((l) => l.name),
-          assignee: i.assignee?.login ?? null,
-          hasPr: withPr.has(ref),
-        },
-      ];
-    });
-  },
-  { maxAge: 300, name: "issue-board", getKey: (_token, query) => query },
-);
-
-const restRef = (i: RestIssue): IssueRef | null =>
+export const restRef = (i: RestIssue): IssueRef | null =>
   issueRef(i.repository_url.replace(/^https:\/\/api\.github\.com\/repos\//, ""), i.number);
+
+export function toBoardIssue(i: RestIssue, ref: IssueRef, hasPr: boolean): BoardIssue {
+  return {
+    ref,
+    number: i.number,
+    title: i.title,
+    url: i.html_url,
+    author: i.user?.login ?? "ghost",
+    createdAt: i.created_at,
+    updatedAt: i.updated_at,
+    comments: i.comments,
+    upvotes: i.reactions?.["+1"] ?? 0,
+    labels: i.labels.map((l) => l.name),
+    assignee: i.assignee?.login ?? null,
+    hasPr,
+  };
+}
+
+// The whole eligible backlog of one repo, oldest first. A second search marks the
+// ones a PR already references; that set is small, so it is cheaper than asking
+// per issue.
+export async function fetchRepoBacklog(token: string, query: string): Promise<BoardIssue[]> {
+  const [all, linked] = await Promise.all([
+    restSearchAll(token, query),
+    restSearchAll(token, `${query} linked:pr`),
+  ]);
+  const withPr = new Set(linked.map(restRef));
+  return all.flatMap((i) => {
+    const ref = restRef(i);
+    return ref ? [toBoardIssue(i, ref, withPr.has(ref))] : [];
+  });
+}
 
 // Watched issues that left the open list: closed, or no longer qualifying. One
 // batched query with an alias per number, so a handful costs a single request.
@@ -167,7 +166,7 @@ export const boardQuery = (config: Parameters<typeof issueSearchQuery>[0], repo?
 // and has anything open.
 // Repos appear or get archived a few times a year, so six hours is plenty and
 // keeps the dropdown free. The core repo leads, the rest is alphabetical.
-const ISSUE_ORG = "nuxt";
+export const ISSUE_ORG = "nuxt";
 export const fetchIssueRepos = defineCachedFunction(
   async (token: string): Promise<string[]> => {
     interface RestRepo {
