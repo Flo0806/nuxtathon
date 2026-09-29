@@ -10,6 +10,7 @@ import type { ReviewItem } from "#shared/types/review";
 import { V5_LABEL } from "#shared/types/review";
 import type { IssueFacts, IssueFactsMap, ScoringRules } from "#shared/types/scoring";
 import { HOME_REPO, issueRef, splitIssueRef } from "#shared/utils/issue-ref";
+import { recordBudget } from "./github-budget";
 import { registryMaintainers } from "./registry";
 
 interface PrAuthor {
@@ -36,6 +37,7 @@ interface IssueRefNode {
 interface PrNode {
   number: number;
   title?: string;
+  files?: { totalCount: number; nodes: { path: string }[] };
   repository?: { nameWithOwner: string };
   createdAt: string;
   mergedAt: string;
@@ -76,6 +78,15 @@ const MAX_PAGES = 10;
 const REPO = "repo:nuxt/nuxt";
 
 // Everything scoring needs from one PR.
+//
+// Sized for GitHub's point cost, which counts every connection that *could* be
+// fetched, whatever comes back: per PR roughly one per commit (its authors),
+// one per closing issue (labels, reactions) and a few more. With 50 commits and
+// 20 closing issues a page of 100 cost ~93 points, and one registry run of 54
+// searches used the whole hourly budget of 5000 (2026-09-29). 20 commits and 10
+// closing issues keep co-authors of all but unusually long PRs and every
+// realistic "fixes #a #b" list, for an estimated half of the cost; the budget
+// counter in the admin shows the measured cost of every call.
 const PR_FIELDS = `
         ... on PullRequest {
           number
@@ -98,14 +109,14 @@ const PR_FIELDS = `
               name
             }
           }
-          closingIssuesReferences(first: 20) {
+          closingIssuesReferences(first: 10) {
             nodes {
               number
               repository {
                 nameWithOwner
               }
               createdAt
-              labels(first: 20) {
+              labels(first: 10) {
                 nodes {
                   name
                 }
@@ -115,7 +126,7 @@ const PR_FIELDS = `
               }
             }
           }
-          commits(first: 50) {
+          commits(first: 20) {
             nodes {
               commit {
                 authors(first: 10) {
@@ -133,9 +144,16 @@ const PR_FIELDS = `
         }
 `;
 
-const SEARCH_QUERY = `
+interface PagedQuery {
+  text: string;
+  pageSize: number;
+}
+
+const searchQuery = (pageSize: number, extra = ""): PagedQuery => ({
+  pageSize,
+  text: `
   query ($search: String!, $after: String) {
-    search(query: $search, type: ISSUE, first: 100, after: $after) {
+    search(query: $search, type: ISSUE, first: ${pageSize}, after: $after) {
       issueCount
       pageInfo {
         endCursor
@@ -143,10 +161,28 @@ const SEARCH_QUERY = `
       }
       nodes {
         ${PR_FIELDS}
+        ${extra}
       }
     }
   }
-`;
+`,
+});
+
+// GitHub's search never returns more than 1000 hits, whatever the page size.
+const MAX_RESULTS = 1000;
+
+// The page size is charged in full even when fewer PRs come back, so it follows
+// the expected volume: the board's org searches return dozens, a registry pack
+// of seven repos usually none to three. More pages are fetched when needed.
+const SEARCH_QUERY = searchQuery(50);
+const SEARCH_QUERY_SMALL = searchQuery(10);
+
+// Monorepo modules also need the changed paths, to keep only PRs that touch the
+// module's folder.
+const SEARCH_QUERY_WITH_FILES = searchQuery(
+  10,
+  `... on PullRequest { files(first: 100) { totalCount nodes { path } } }`,
+);
 
 const AUTHOR_QUERY = `
   query ($search: String!, $after: String) {
@@ -190,17 +226,35 @@ async function fetchUserName(token: string, login: string): Promise<ContributorU
 
 // Never pass GitHub's status through: a 401 here is a bad token, and the admin
 // client would read it as an expired admin session.
+//
+// Every response passes its rate-limit headers to the budget counter.
 async function post<T>(token: string, query: string, variables: object): Promise<T> {
+  // The whole query, not a prefix: some embed their search string further in,
+  // and the budget counter needs it to name the call.
+  const label = String((variables as { search?: string }).search ?? query);
   try {
-    return await $fetch<T>(GITHUB_GRAPHQL, {
+    const res = await $fetch.raw<T>(GITHUB_GRAPHQL, {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "user-agent": "nuxtathon-leaderboard" },
       body: { query, variables },
     });
+    const errors = (res._data as { errors?: { type?: string }[] } | undefined)?.errors;
+    recordBudget(res.headers, label, Boolean(errors?.some((e) => e.type === "RATE_LIMITED")));
+    return res._data as T;
   } catch (e) {
-    const status = (e as { statusCode?: number }).statusCode;
-    throw createError({ statusCode: 502, statusMessage: `GitHub responded ${status ?? "error"}` });
+    const err = e as { statusCode?: number; response?: { headers?: Headers } };
+    recordBudget(err.response?.headers, label, err.statusCode === 403 || err.statusCode === 429);
+    throw createError({
+      statusCode: 502,
+      statusMessage: `GitHub responded ${err.statusCode ?? "error"}`,
+    });
   }
+}
+
+// Asks GitHub for nothing but the budget, so the counter has numbers even when
+// no real query ran since the server started. Costs at most one point.
+export async function probeBudget(token: string): Promise<void> {
+  await post(token, "query { rateLimit { remaining } }", {});
 }
 
 interface GraphqlError {
@@ -353,17 +407,30 @@ export function scopeSearches(scope: EventScope, qualifiers: string): string[] {
   );
 }
 
+// `pauseMs` spaces the requests out. Next to the hourly points GitHub also
+// limits load per minute; a long run such as the registry search (~55 searches)
+// passes a pause so it never bunches up, the board's two or three do not need
+// one. (What emptied the budget on 2026-09-29 was the hourly points, see
+// PR_FIELDS; the pause guards the other limit.)
 async function searchPrsAcross(
   token: string,
   searches: string[],
+  query: PagedQuery = SEARCH_QUERY,
+  pauseMs = 0,
 ): Promise<{ prs: PrNode[]; counts: { search: string; count: number }[] }> {
   const byRef = new Map<IssueRef, PrNode>();
   const counts: { search: string; count: number }[] = [];
+  let first = true;
+  const pause = async () => {
+    if (!first && pauseMs > 0) await new Promise((r) => setTimeout(r, pauseMs));
+    first = false;
+  };
   for (const search of searches) {
     let count = 0;
     let after: string | null = null;
-    for (let page = 0; page < MAX_PAGES; page++) {
-      const { search: result } = (await graphql(token, SEARCH_QUERY, { search, after })) as {
+    for (let page = 0; page < MAX_RESULTS / query.pageSize; page++) {
+      await pause();
+      const { search: result } = (await graphql(token, query.text, { search, after })) as {
         search: SearchPage & { issueCount: number };
       };
       count = result.issueCount;
@@ -482,6 +549,102 @@ function toReviewItem(
     createdAt: pr.createdAt,
     mergedAt: pr.mergedAt,
     suggested: v5 ? base * 2 : base,
+  };
+}
+
+// Registry modules outside the scope's orgs and repos. They are too many to
+// search per recompute, so they are searched in packs: several `repo:`
+// qualifiers in one query act as OR (measured: the combined count equals the
+// per-repo sum), and GitHub caps a query at 256 characters, which fits ~7 repos.
+// 270 foreign repos take ~40 searches. Every hit goes to review, even one that
+// closes a qualifying issue: these repos are nobody's here and only searched
+// hourly, so nothing from them scores without an organizer.
+const MAX_QUERY_LENGTH = 256;
+// ~55 searches then take about two minutes instead of thirty seconds. It runs in
+// the background, so nobody waits for it.
+const REGISTRY_PAUSE_MS = 2000;
+
+export function packRepoSearches(repos: string[], qualifiers: string): string[] {
+  const out: string[] = [];
+  let pack: string[] = [];
+  const query = (list: string[]) => `${list.map((r) => `repo:${r}`).join(" ")} ${qualifiers}`;
+  for (const repo of repos) {
+    if (pack.length && query([...pack, repo]).length > MAX_QUERY_LENGTH) {
+      out.push(query(pack));
+      pack = [];
+    }
+    pack.push(repo);
+  }
+  if (pack.length) out.push(query(pack));
+  return out;
+}
+
+// A monorepo PR counts as module work only when it changes the module's folder.
+// A PR with more files than GitHub listed and no match among them is kept: the
+// organizer can still reject it, while dropping it would hide real work.
+function touchesModule(pr: PrNode, paths: Map<string, string>): boolean {
+  const ref = refOf(pr);
+  const folder = ref ? paths.get(ref.slice(0, ref.lastIndexOf("#"))) : undefined;
+  if (!folder || !pr.files) return true;
+  const prefix = `${folder}/`;
+  if (pr.files.nodes.some((f) => f.path.startsWith(prefix))) return true;
+  return pr.files.totalCount > pr.files.nodes.length;
+}
+
+export async function fetchRegistryReview(
+  token: string,
+  config: Pick<EventConfig, "scope" | "qualifyingBefore" | "coreTeam" | "scoring">,
+  from: string,
+  to: string,
+): Promise<{ items: ReviewItem[]; repos: number; searches: number }> {
+  const registry = await registryMaintainers();
+  if (!registry.ok) {
+    throw createError({ statusCode: 502, statusMessage: "The module registry did not answer" });
+  }
+  const orgs = new Set(config.scope.orgs);
+  const listed = new Set(config.scope.repos);
+  const repos = [...registry.byRepo.keys()].filter(
+    (r) => !orgs.has(r.slice(0, r.indexOf("/"))) && !listed.has(r),
+  );
+  const qualifiers = `is:pr is:merged created:${toGithubStamp(from)}..${toGithubStamp(to)}`;
+  // Monorepos (the registry names a folder) are searched with file lists;
+  // everything else is the module, so the lighter query does.
+  const mono = repos.filter((r) => registry.paths.has(r));
+  const whole = repos.filter((r) => !registry.paths.has(r));
+  const monoSearches = packRepoSearches(mono, qualifiers);
+  const wholeSearches = packRepoSearches(whole, qualifiers);
+  const [{ prs: wholePrs }, { prs: monoPrs }] = [
+    await searchPrsAcross(token, wholeSearches, SEARCH_QUERY_SMALL, REGISTRY_PAUSE_MS),
+    await searchPrsAcross(token, monoSearches, SEARCH_QUERY_WITH_FILES, REGISTRY_PAUSE_MS),
+  ];
+  const prs = [...wholePrs, ...monoPrs.filter((pr) => touchesModule(pr, registry.paths))];
+  const searches = [...wholeSearches, ...monoSearches];
+
+  const cutoff = Date.parse(config.qualifyingBefore);
+  const core = new Set(config.coreTeam.map((l) => l.toLowerCase()));
+  const issuePoints = config.scoring.issuePoints.enabled ? config.scoring.issuePoints.points : 1;
+  const items: ReviewItem[] = [];
+  for (const pr of prs) {
+    const ref = refOf(pr);
+    if (!ref) continue;
+    const verdict = classifyPr(pr, cutoff, core, registry.byRepo);
+    if (verdict.path === "ignored") continue;
+    // Core team with a qualifying issue would score automatically in scope;
+    // here there is no automatic path, and core team is never reviewed.
+    if (verdict.path === "auto" && verdict.contributors.every((l) => core.has(l.toLowerCase()))) {
+      continue;
+    }
+    const item = toReviewItem(pr, ref, verdict, config.scoring, core);
+    items.push({
+      ...item,
+      reason: `registry module, ${verdict.reason}`,
+      suggested: item.suggested + verdict.qualifying.length * issuePoints,
+    });
+  }
+  return {
+    items: items.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    repos: repos.length,
+    searches: searches.length,
   };
 }
 

@@ -83,6 +83,10 @@ export const RANDOM_PLACEHOLDER = "{random}";
 // Always part of coreTeam and markerAuthors, whatever the settings say.
 export const ORGANIZER_LOGIN = "danielroe";
 
+// The site's developer. Sees the GitHub budget counter on every page when signed
+// in with GitHub, without the admin login.
+export const DEVELOPER_LOGIN = "Flo0806";
+
 // Texts the admin may override at any time.
 export const CONTENT_KEYS = [
   "title",

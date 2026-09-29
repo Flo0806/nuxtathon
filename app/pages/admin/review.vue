@@ -8,6 +8,14 @@ definePageMeta({ layout: "admin" });
 
 interface Review {
   updatedAt: string;
+  registry: {
+    updatedAt: string;
+    repos: number;
+    searches: number;
+    running: boolean;
+    lastAttemptAt: string;
+    lastError: string;
+  };
   open: ReviewItem[];
   decided: ReviewDecision[];
   frozen: boolean;
@@ -88,6 +96,42 @@ async function rejectShown() {
   }
 }
 
+const scanning = ref(false);
+let poll: ReturnType<typeof setTimeout> | undefined;
+
+// The search runs on the server for about two minutes; follow it until it ends.
+async function follow() {
+  try {
+    await load();
+  } catch {
+    // A failed poll must not leave the page stuck on "searching".
+    scanning.value = false;
+    return;
+  }
+  if (review.value?.registry.running) {
+    poll = setTimeout(follow, 5000);
+  } else {
+    scanning.value = false;
+  }
+}
+
+async function scanNow() {
+  scanning.value = true;
+  try {
+    const res = await $fetch<{ running: boolean }>("/api/admin/review-scan", {
+      method: "POST",
+      headers: auth.authHeaders(),
+    });
+    if (res.running) toast.success("Registry search started, it takes about two minutes");
+    else toast.success("Searched less than ten minutes ago, showing that result");
+    await follow();
+  } catch (e) {
+    scanning.value = false;
+    if (!auth.handle401(e)) toast.error(errMsg(e));
+  }
+}
+onBeforeUnmount(() => clearTimeout(poll));
+
 const day = (iso: string) => iso.slice(0, 16).replace("T", " ");
 const isV5 = (labels: string[]) => labels.some((l) => l.toLowerCase() === V5_LABEL);
 const repo = (ref: IssueRef) => splitIssueRef(ref).repo;
@@ -114,6 +158,33 @@ const number = (ref: IssueRef) => splitIssueRef(ref).number;
     </p>
 
     <template v-if="review">
+      <div class="flex flex-wrap items-center gap-3 font-mono text-[0.72rem] text-muted">
+        <span>
+          Registry modules:
+          <template v-if="review.registry.running">searching, about two minutes...</template>
+          <template v-else-if="review.registry.updatedAt">
+            {{ review.registry.repos }} repositories searched {{ day(review.registry.updatedAt) }}
+            UTC, again every hour while the event runs.
+          </template>
+          <template v-else>not searched yet (starts with the event, if in scope).</template>
+          <span v-if="!review.registry.running && review.registry.lastError" class="text-red-400">
+            Last attempt {{ day(review.registry.lastAttemptAt) }} UTC failed:
+            {{ review.registry.lastError }}. Retried automatically after an hour.
+          </span>
+        </span>
+        <button
+          class="btn"
+          :disabled="scanning || review.registry.running || review.frozen"
+          @click="scanNow"
+        >
+          <span
+            :class="scanning ? 'i-ph-spinner animate-spin' : 'i-ph-arrows-clockwise'"
+            aria-hidden="true"
+          />
+          Search now
+        </button>
+      </div>
+
       <span class="font-mono text-[0.72rem] uppercase tracking-wider text-fg">
         To review ({{ review.open.length }})<template v-if="review.updatedAt">
           , as of {{ day(review.updatedAt) }} UTC</template

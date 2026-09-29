@@ -6,6 +6,7 @@ import {
   activeReviews,
   readReviewDecisions,
   reviewCredits,
+  scanRegistry,
   writeReviewQueue,
 } from "../utils/review";
 
@@ -100,6 +101,10 @@ export default defineCachedEventHandler(
 
     // Same computation, so the queue always matches what the board scored.
     await writeReviewQueue(result.review, fetchedAt);
+    // Registry modules on their own hourly clock; never blocks the board.
+    scanRegistry(token, config)
+      .then(({ done }) => done)
+      .catch((e) => console.error("[review] registry scan failed:", e));
 
     await appendSnapshot(
       entries.map((entry) => entry.login),

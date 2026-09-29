@@ -1,5 +1,5 @@
 import type { EventSettings } from "#shared/types/event";
-import { clearReviewDecisions, clearReviewQueue } from "../../utils/review";
+import { clearRegistryQueue, clearReviewDecisions, clearReviewQueue } from "../../utils/review";
 
 // Archive the fired event, clear live state, write the new window to settings.
 // Existing content overrides are kept.
@@ -34,6 +34,7 @@ export default defineEventHandler(async (event) => {
   await clearSnapshots();
   await clearReviewQueue();
   await clearReviewDecisions();
+  await clearRegistryQueue();
   await clearAnnounceState();
   await invalidateLeaderboardCache();
   if (body?.announce) {

@@ -1,3 +1,5 @@
+import { recordBudget } from "./github-budget";
+
 // GitHub's search API caps out at 1000 results, so a random offset can only
 // reach that far. A page of 100 is plenty of variety for one button.
 const PER_PAGE = 100;
@@ -32,18 +34,32 @@ async function searchIssues(
   page: number,
 ): Promise<{ total_count: number; items: SearchHit[] }> {
   try {
-    return await $fetch("https://api.github.com/search/issues", {
-      query: { q, per_page: perPage, page, sort: "updated", order: "desc" },
-      headers: {
-        authorization: `Bearer ${token}`,
-        accept: "application/vnd.github+json",
-        "user-agent": "nuxtathon-leaderboard",
+    const res = await $fetch.raw<{ total_count: number; items: SearchHit[] }>(
+      "https://api.github.com/search/issues",
+      {
+        query: { q, per_page: perPage, page, sort: "updated", order: "desc" },
+        headers: {
+          authorization: `Bearer ${token}`,
+          accept: "application/vnd.github+json",
+          "user-agent": "nuxtathon-leaderboard",
+        },
       },
-    });
+    );
+    recordBudget(res.headers, q, false, "random issue button");
+    return res._data!;
   } catch (e) {
     // Same rule as the GraphQL helper: never pass GitHub's status through, or a
     // 401 from a bad token reads as our own auth failing.
-    const status = (e as { statusCode?: number }).statusCode;
-    throw createError({ statusCode: 502, statusMessage: `GitHub responded ${status ?? "error"}` });
+    const err = e as { statusCode?: number; response?: { headers?: Headers } };
+    recordBudget(
+      err.response?.headers,
+      q,
+      err.statusCode === 403 || err.statusCode === 429,
+      "random issue button",
+    );
+    throw createError({
+      statusCode: 502,
+      statusMessage: `GitHub responded ${err.statusCode ?? "error"}`,
+    });
   }
 }

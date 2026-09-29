@@ -1,0 +1,105 @@
+// What the shared GitHub token has left, from the rate-limit headers GitHub
+// sends with every response. Reading them costs nothing, unlike /rate_limit,
+// whose GraphQL numbers disagreed with the API itself on 2026-09-29 (4705 left
+// there while queries were already refused). Kept in memory: a single process
+// serves the site, and the numbers are only interesting while it runs.
+
+export type BudgetResource = "graphql" | "search" | "core";
+
+export interface BudgetReading {
+  remaining: number;
+  limit: number;
+  used: number;
+  resetAt: string;
+  // When GitHub last reported it.
+  seenAt: string;
+}
+
+export interface BudgetCall {
+  at: string;
+  resource: BudgetResource;
+  // What the site asked GitHub for, in words (see describeCall).
+  label: string;
+  // The search string or query as sent, for the tooltip.
+  raw: string;
+  // Points (GraphQL) or requests (REST) this call used, when it can be told
+  // from the previous reading in the same window.
+  cost: number | null;
+  remaining: number;
+  // GitHub refused the call for its budget.
+  limited: boolean;
+}
+
+const MAX_CALLS = 60;
+const readings: Partial<Record<BudgetResource, BudgetReading>> = {};
+const calls: BudgetCall[] = [];
+
+// `purpose` names the call when its text alone is ambiguous (the random-issue
+// button searches exactly like Flo's list does for nuxt/nuxt).
+export function recordBudget(
+  headers: Headers | undefined,
+  label: string,
+  limited = false,
+  purpose?: string,
+): void {
+  const resource = headers?.get("x-ratelimit-resource") as BudgetResource | null;
+  const remaining = Number(headers?.get("x-ratelimit-remaining"));
+  const limit = Number(headers?.get("x-ratelimit-limit"));
+  const reset = Number(headers?.get("x-ratelimit-reset"));
+  if (!resource || !Number.isFinite(remaining) || !Number.isFinite(limit)) return;
+
+  const resetAt = new Date(reset * 1000).toISOString();
+  const previous = readings[resource];
+  const cost =
+    previous && previous.resetAt === resetAt ? Math.max(0, previous.remaining - remaining) : null;
+  const seenAt = new Date().toISOString();
+  readings[resource] = {
+    remaining,
+    limit,
+    used: Number(headers?.get("x-ratelimit-used")) || limit - remaining,
+    resetAt,
+    seenAt,
+  };
+  const raw = label.replace(/\s+/g, " ").trim();
+  calls.unshift({
+    at: seenAt,
+    resource,
+    label: purpose ?? describeCall(raw),
+    raw: raw.slice(0, 300),
+    cost,
+    remaining,
+    limited,
+  });
+  calls.length = Math.min(calls.length, MAX_CALLS);
+}
+
+export function budgetSnapshot() {
+  return { readings, calls };
+}
+
+// The purpose of a call, from the search string or query it sent. Callers pass
+// what they have (usually the search string); a query that embeds its search,
+// as the PR-link delta does, is unwrapped first. Anything unknown shows as is.
+export function describeCall(raw: string): string {
+  const q = /query: "([^"]+)"/.exec(raw)?.[1] ?? raw;
+  const org = /org:([\w-]+)/.exec(q)?.[1];
+  const repo = /repo:([\w.-]+\/[\w.-]+)/.exec(q)?.[1];
+  const repos = (q.match(/repo:/g) ?? []).length;
+
+  if (q.startsWith("query { rateLimit")) return "budget check";
+  if (/^query \{\s*r\d+: repository/.test(q)) return "issue lookup (watch list, credits, upvotes)";
+  if (q.startsWith("repos of ")) return "repository list for Flo's list";
+  if (/user\(login:/.test(q)) return "contributor name";
+  if (repos > 1 && q.includes("is:pr")) return `registry: ${repos} module repositories`;
+  if (q.includes("is:pr is:merged") && (org || repo))
+    return `leaderboard: merged PRs in ${org ?? repo}`;
+  if (q.includes("is:pr created:") && (org || repo))
+    return `leaderboard: PR count in ${org ?? repo}`;
+  if (q.includes("is:pr updated:>")) return "Flo's list: new PR links";
+  if (q.includes("is:issue updated:>")) return "Flo's list: changes";
+  if (q.includes("is:issue is:closed closed:")) return "leaderboard: close markers";
+  if (repo && q.includes("is:issue state:open")) {
+    return `Flo's list: ${repo}${q.includes("linked:pr") ? " (which have a PR)" : ""}`;
+  }
+  return q.slice(0, 80);
+}

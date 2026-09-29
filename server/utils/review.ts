@@ -1,5 +1,6 @@
-import type { ContributionIds, ManualCredit } from "#shared/types/event";
+import type { ContributionIds, EventConfig, ManualCredit } from "#shared/types/event";
 import type { IssueRef } from "#shared/types/issue-ref";
+import { fetchRegistryReview } from "./github";
 import type {
   ReviewDecision,
   ReviewDecisions,
@@ -65,3 +66,87 @@ export const reviewCredits = (reviews: ReviewDecision[]): ManualCredit[] =>
   reviews.flatMap((d) =>
     d.people.map((login) => ({ login, amount: d.points, note: `reviewed ${d.ref}` })),
   );
+
+// Registry modules are searched on their own clock (see fetchRegistryReview) and
+// stored apart from the scope queue, which every leaderboard recompute rewrites.
+const REGISTRY_KEY = "review-queue-registry";
+const REGISTRY_EVERY_MS = 60 * 60 * 1000;
+// "Search now" in the admin: generous for a person, cheap for the budget.
+const REGISTRY_MANUAL_MS = 10 * 60 * 1000;
+
+export interface RegistryQueue extends ReviewQueue {
+  repos: number;
+  searches: number;
+}
+
+export async function readRegistryQueue(): Promise<RegistryQueue> {
+  return (
+    (await useStorage("state").getItem<RegistryQueue>(REGISTRY_KEY)) ?? {
+      updatedAt: "",
+      items: [],
+      repos: 0,
+      searches: 0,
+    }
+  );
+}
+
+export async function clearRegistryQueue(): Promise<void> {
+  await useStorage("state").removeItem(REGISTRY_KEY);
+}
+
+let scanning: Promise<RegistryQueue> | null = null;
+// Every attempt counts toward the interval, failed ones too: when GitHub refuses
+// (budget used up), retrying on the next five-minute recompute would only keep
+// the account blocked. Kept in memory; a restart simply allows one try.
+let lastAttemptAt = 0;
+let lastError = "";
+
+export const registryScanStatus = () => ({
+  running: scanning !== null,
+  lastAttemptAt: lastAttemptAt ? new Date(lastAttemptAt).toISOString() : "",
+  lastError,
+});
+
+// Starts the registry search when it is due: registry in scope, the event has
+// started, and the last attempt is older than the interval (or than the manual
+// cooldown when an admin asks). One run at a time; a second caller joins it.
+// `started` tells the caller whether a run is under way, which it cannot learn
+// from the promise alone because the due check itself reads storage.
+export async function scanRegistry(
+  token: string,
+  config: EventConfig,
+  manual = false,
+): Promise<{ started: boolean; done: Promise<RegistryQueue> }> {
+  if (scanning) return { started: true, done: scanning };
+  const current = await readRegistryQueue();
+  const now = Date.now();
+  const last = Math.max(lastAttemptAt, current.updatedAt ? Date.parse(current.updatedAt) : 0);
+  const due =
+    config.scope.registry &&
+    now >= Date.parse(config.startsAt) &&
+    now - last >= (manual ? REGISTRY_MANUAL_MS : REGISTRY_EVERY_MS);
+  if (!due) return { started: false, done: Promise.resolve(current) };
+
+  lastAttemptAt = now;
+  scanning ??= (async () => {
+    try {
+      const updatedAt = new Date().toISOString();
+      const result = await fetchRegistryReview(
+        token,
+        config,
+        config.startsAt,
+        new Date(Math.min(now, Date.parse(config.endsAt))).toISOString(),
+      );
+      const next: RegistryQueue = { updatedAt, ...result };
+      await useStorage("state").setItem(REGISTRY_KEY, next);
+      lastError = "";
+      return next;
+    } catch (e) {
+      lastError = (e as { statusMessage?: string; message?: string }).statusMessage ?? String(e);
+      throw e;
+    } finally {
+      scanning = null;
+    }
+  })();
+  return { started: true, done: scanning };
+}

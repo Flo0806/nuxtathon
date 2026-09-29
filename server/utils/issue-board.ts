@@ -3,6 +3,7 @@ import type { BoardIssue } from "#shared/types/issues";
 import { HOME_REPO, issueRef, normalizeIssueRefs, parseIssueRef } from "#shared/utils/issue-ref";
 import { issueSearchQuery } from "#shared/utils/issue-search";
 import { batchedIssueQuery, githubQuery, type RepoAliases } from "./github";
+import { recordBudget } from "./github-budget";
 
 export const PER_PAGE = 100;
 // 500 issues of headroom over the ~280 that qualify in nuxt/nuxt today; GitHub's
@@ -30,7 +31,7 @@ export interface RestIssue {
 
 export async function restSearchPage(token: string, q: string, page: number) {
   try {
-    return await $fetch<{ total_count: number; items: RestIssue[] }>(
+    const res = await $fetch.raw<{ total_count: number; items: RestIssue[] }>(
       "https://api.github.com/search/issues",
       {
         query: { q, per_page: PER_PAGE, page, sort: "created", order: "asc" },
@@ -41,9 +42,15 @@ export async function restSearchPage(token: string, q: string, page: number) {
         },
       },
     );
+    recordBudget(res.headers, q);
+    return res._data!;
   } catch (e) {
-    const status = (e as { statusCode?: number }).statusCode;
-    throw createError({ statusCode: 502, statusMessage: `GitHub responded ${status ?? "error"}` });
+    const err = e as { statusCode?: number; response?: { headers?: Headers } };
+    recordBudget(err.response?.headers, q, err.statusCode === 403 || err.statusCode === 429);
+    throw createError({
+      statusCode: 502,
+      statusMessage: `GitHub responded ${err.statusCode ?? "error"}`,
+    });
   }
 }
 
@@ -167,7 +174,7 @@ export const fetchIssueRepos = defineCachedFunction(
     }
     const names: string[] = [];
     for (let page = 1; page <= 5; page++) {
-      const repos = await $fetch<RestRepo[]>(`https://api.github.com/orgs/${ISSUE_ORG}/repos`, {
+      const res = await $fetch.raw<RestRepo[]>(`https://api.github.com/orgs/${ISSUE_ORG}/repos`, {
         query: { type: "public", per_page: PER_PAGE, page },
         headers: {
           authorization: `Bearer ${token}`,
@@ -175,6 +182,8 @@ export const fetchIssueRepos = defineCachedFunction(
           "user-agent": "nuxtathon-leaderboard",
         },
       });
+      recordBudget(res.headers, `repos of ${ISSUE_ORG}, page ${page}`);
+      const repos = res._data ?? [];
       for (const r of repos) {
         if (!r.archived && !r.fork && r.has_issues && r.open_issues_count > 0) {
           names.push(r.full_name.toLowerCase());

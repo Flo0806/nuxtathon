@@ -56,7 +56,7 @@ async function submitLogin() {
           </button>
         </div>
 
-        <nav class="flex gap-1 border-b border-line" aria-label="Admin sections">
+        <nav class="flex flex-wrap gap-1 border-b border-line" aria-label="Admin sections">
           <NuxtLink
             v-for="t in TABS"
             :key="t.to"
@@ -68,6 +68,8 @@ async function submitLogin() {
             {{ t.label }}
           </NuxtLink>
         </nav>
+
+        <GithubBudget v-if="ready && auth.isAuthed.value" source="admin" />
 
         <slot />
       </main>
