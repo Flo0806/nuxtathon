@@ -128,9 +128,12 @@ const FIELDS: Field[] = [
   },
 ];
 const GROUPS = ["Content", "Event", "Integrations"] as const;
-// Everything except `scoring`, which is an object and has its own editor below.
-type TextKey = Exclude<SettingsKey, "scoring" | "links">;
-const TEXT_KEYS = SETTINGS_KEYS.filter((k): k is TextKey => k !== "scoring" && k !== "links");
+// Everything except the object-valued keys, which have their own editors (or,
+// for `scope`, none yet: it is carried through unchanged on save).
+type TextKey = Exclude<SettingsKey, "scoring" | "links" | "scope">;
+const TEXT_KEYS = SETTINGS_KEYS.filter(
+  (k): k is TextKey => k !== "scoring" && k !== "links" && k !== "scope",
+);
 
 const toast = useToast();
 const auth = useAdminAuth();
@@ -146,6 +149,8 @@ const form = reactive(Object.fromEntries(TEXT_KEYS.map((k) => [k, ""])) as Recor
 // because an object is not directly editable in a form.
 const scoring = reactive<ScoringRules>(structuredClone(DEFAULT_SCORING));
 const labelRows = ref<{ label: string; points: number }[]>([]);
+// Stored scope override, sent back as loaded so saving other fields keeps it.
+const scopeOverride = ref<EventSettings["scope"]>();
 // Buttons under the intro. The issues link keeps its placeholder here; the
 // server expands it, so the cutoff date is never typed in.
 const links = ref<EventLink[]>([]);
@@ -251,13 +256,16 @@ function apply(p: Payload) {
   }
   Object.assign(
     scoring,
-    structuredClone(p.settings.scoring ?? p.defaults.scoring ?? DEFAULT_SCORING),
+    // After a save `p.defaults` is the reactive `defaults.value`, which
+    // structuredClone refuses; toRaw hands it the plain object.
+    structuredClone(toRaw(p.settings.scoring ?? p.defaults.scoring ?? DEFAULT_SCORING)),
   );
   labelRows.value = Object.entries(scoring.labelBonus.points).map(([label, points]) => ({
     label,
     points,
   }));
   links.value = (p.settings.links ?? p.defaults.links ?? []).map((l) => ({ ...l }));
+  scopeOverride.value = p.settings.scope;
 }
 
 async function load() {
@@ -273,6 +281,7 @@ async function save() {
   busy.value = true;
   try {
     const settings = Object.fromEntries(TEXT_KEYS.map((k) => [k, fromForm(k)])) as EventSettings;
+    settings.scope = scopeOverride.value;
     settings.links = links.value
       .map((l) => ({ ...l, label: l.label.trim(), url: l.url.trim() }))
       .filter((l) => l.label && l.url);
@@ -400,7 +409,7 @@ const { visible } = useAdminPage(load);
           :type="
             f.type === 'datetime' ? 'datetime-local' : f.type === 'secret' ? 'password' : 'text'
           "
-          autocomplete="off"
+          :autocomplete="f.type === 'secret' ? 'new-password' : 'off'"
           :placeholder="defaultOf(f.key)"
           :disabled="isLocked(f)"
           class="input disabled:opacity-50"

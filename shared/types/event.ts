@@ -1,4 +1,5 @@
 import type { IssueRef } from "./issue-ref";
+import type { EventScope } from "./scope";
 import type { ScoringRules } from "./scoring";
 
 // Static, committed event configuration (source: config/event.json).
@@ -38,6 +39,8 @@ export interface EventConfig {
   // Point rules. Every rule off means one point per qualifying closed issue,
   // which is how the first event was scored.
   scoring: ScoringRules;
+  // Where counted PRs may live. The default is the core repo, as in #1.
+  scope: EventScope;
   // IANA zone used purely for rendering dates and the countdown. Not editable
   // via settings yet: UTC is mandatory until the admin forms handle zones.
   displayTimeZone: string;
@@ -99,6 +102,7 @@ export const MECHANICS_KEYS = [
   "closeMarker",
   "markerAuthors",
   "scoring",
+  "scope",
 ] as const;
 // Editable in every phase, and left out of FinalResult.config (a webhook url is
 // a credential, not part of an event's record).

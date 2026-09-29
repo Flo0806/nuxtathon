@@ -19,6 +19,7 @@ const configKey = async (event: H3Event): Promise<string> => {
         c.closeMarker,
         c.markerAuthors,
         c.scoring,
+        c.scope,
       ]),
     )
     .digest("hex")

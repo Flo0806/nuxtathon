@@ -39,6 +39,11 @@
   ],
   "closeMarker": "nuxtathon closed",
   "markerAuthors": ["danielroe"],
+  "scope": {
+    "repos": ["nuxt/nuxt"],
+    "orgs": [],
+    "registry": false
+  },
   "displayTimeZone": "UTC",
   "discordWebhookUrl": "",
   "discordAnnounce": false,

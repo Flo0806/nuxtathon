@@ -24,6 +24,20 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 422, statusMessage: `Invalid date for ${key}` });
     }
   }
+  // Password managers ignore autocomplete="off" on masked fields and have filled
+  // an account password in here before. Only an actual webhook url is accepted,
+  // so a credential never lands in the settings file.
+  const webhook = incoming.discordWebhookUrl;
+  if (
+    typeof webhook === "string" &&
+    webhook.trim() &&
+    !/^https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\//.test(webhook.trim())
+  ) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: "The Discord webhook must be a https://discord.com/api/webhooks/... url",
+    });
+  }
   // Validate the effective config (empty fields fall back to defaults), same as
   // the form does.
   assertWindow({ ...eventConfig, ...pickSettings(incoming as EventSettings) }, locked);
