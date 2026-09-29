@@ -838,10 +838,16 @@ export async function fetchLeaderboard(
   let upvotes = 0;
   for (const ref of closedInWindow) upvotes += issueFacts[ref]?.upvotes ?? 0;
   const merged = prs.filter((pr) => isHuman(pr.author)).length;
-  const submitted = await countHumanPrs(
-    token,
-    `${REPO} is:pr created:${toGithubStamp(from)}..${toGithubStamp(to)}`,
-  );
+  // Every PR opened in the window across the scope, merged or not. The searches
+  // never overlap (scopeSearches drops repos inside listed orgs), so the counts
+  // add up without double counting.
+  let submitted = 0;
+  for (const search of scopeSearches(
+    config.scope,
+    `is:pr created:${toGithubStamp(from)}..${toGithubStamp(to)}`,
+  )) {
+    submitted += await countHumanPrs(token, search);
+  }
 
   const contributions: ContributionIds = {};
   for (const m of [byLogin, coreByLogin]) {
