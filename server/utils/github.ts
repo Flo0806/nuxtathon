@@ -334,24 +334,6 @@ function toGithubStamp(iso: string): string {
 
 const isHuman = (author: { __typename: string } | null): boolean => author?.__typename === "User";
 
-// PRs submitted (created) inside the window that have since been merged, whenever
-// the merge happened. The rule scores by submission date, not merge date.
-async function fetchEventPrs(token: string, from: string, to: string): Promise<PrNode[]> {
-  const search = `${REPO} is:pr is:merged created:${toGithubStamp(from)}..${toGithubStamp(to)}`;
-  const prs: PrNode[] = [];
-  let after: string | null = null;
-
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const { search: result } = (await graphql(token, SEARCH_QUERY, { search, after })) as {
-      search: SearchPage;
-    };
-    prs.push(...result.nodes);
-    if (!result.pageInfo.hasNextPage) break;
-    after = result.pageInfo.endCursor;
-  }
-  return prs;
-}
-
 // Merged PRs across every org and repo of a scope. One search per entry rather
 // than one OR-ed query: GitHub caps a query at 256 characters and five
 // operators, which a longer repo list would hit. They run one after another, not
@@ -730,7 +712,15 @@ export async function fetchLeaderboard(
   const cutoff = Date.parse(config.qualifyingBefore);
   const coreSet = new Set((config.coreTeam ?? []).map((l) => l.toLowerCase()));
 
-  const prs = await fetchEventPrs(token, from, to);
+  // Opened in the window and merged whenever, as in #1, across the whole scope.
+  const searches = scopeSearches(
+    config.scope,
+    `is:pr is:merged created:${toGithubStamp(from)}..${toGithubStamp(to)}`,
+  );
+  const [{ prs }, registry] = await Promise.all([
+    searchPrsAcross(token, searches),
+    registryMaintainers(),
+  ]);
 
   const byLogin = new Map<string, Tally>();
   const coreByLogin = new Map<string, Tally>();
@@ -745,19 +735,23 @@ export async function fetchLeaderboard(
   for (const pr of prs) {
     const prRef = refOf(pr);
     if (!prRef) continue;
-    const qualifying: IssueRef[] = [];
     for (const node of pr.closingIssuesReferences.nodes) {
       const ref = refOf(node);
       if (!ref) continue;
       closedInWindow.add(ref);
       issueFacts[ref] = toIssueFacts(node);
-      if (Date.parse(node.createdAt) < cutoff) qualifying.push(ref);
     }
-    if (qualifying.length === 0) continue;
+    // Same verdict the admin scope check shows. Only the automatic path scores
+    // here; review-path PRs count once an organizer confirms them.
+    const verdict = classifyPr(pr, cutoff, coreSet, registry.byRepo);
+    if (verdict.path !== "auto") continue;
+    const qualifying = verdict.qualifying;
+    const credited = new Set(verdict.contributors.map((l) => l.toLowerCase()));
 
-    // Full credit for every contributor; issues are deduped per person via the
-    // set, so the same issue counts once even across several of their PRs.
+    // Full credit for every credited contributor; issues are deduped per person
+    // via the set, so the same issue counts once even across several of their PRs.
     for (const contributor of collectContributors(pr).values()) {
+      if (!credited.has(contributor.login.toLowerCase())) continue;
       // Key by lowercased login: GitHub logins are case-insensitive identities,
       // so "Norbiros" and "norbiros" must land on the same tally. The display
       // login keeps whatever case the first source (usually the PR) provided.
