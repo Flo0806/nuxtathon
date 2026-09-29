@@ -237,6 +237,11 @@ conditional request keeps getting `304 Not Modified` for as long as the data
 itself is unchanged. Nothing here ever triggers a GitHub call of its own; it reads the
 same cache the site does.
 
+Issues and PRs appear twice: `issues` / `prs` hold the plain numbers v1 always
+had, and `issueRefs` / `prRefs` hold the same list as `owner/repo#number`. The
+numbers alone are only unambiguous while everything lives in `nuxt/nuxt`; new
+consumers should read the refs.
+
 Fields are added, never removed or retyped. A breaking change would ship as
 `/api/v2`.
 

@@ -93,7 +93,12 @@ export function apiContributor(
     closedIssues: entry.closedIssues,
     mergedPRs: entry.mergedPRs,
     ...(contributions
-      ? { issues: apiNumbers(contributions.issues), prs: apiNumbers(contributions.prs) }
+      ? {
+          issues: apiNumbers(contributions.issues),
+          prs: apiNumbers(contributions.prs),
+          issueRefs: contributions.issues,
+          prRefs: contributions.prs,
+        }
       : {}),
   };
 }

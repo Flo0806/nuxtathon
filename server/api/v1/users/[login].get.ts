@@ -65,6 +65,8 @@ export default defineEventHandler(async (event) => {
         mergedPRs: entry.mergedPRs,
         issues: apiNumbers(result.contributions?.[entry.login]?.issues),
         prs: apiNumbers(result.contributions?.[entry.login]?.prs),
+        issueRefs: result.contributions?.[entry.login]?.issues ?? [],
+        prRefs: result.contributions?.[entry.login]?.prs ?? [],
         awards,
         certificateUrl: `${site}/archive/${slug}/certificate/${entry.login}.pdf`,
       });

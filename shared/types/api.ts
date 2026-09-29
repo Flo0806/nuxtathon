@@ -26,9 +26,13 @@ export interface ApiContributor {
   score: number;
   closedIssues: number;
   mergedPRs: number;
-  // Only with ?include=contributions.
+  // Only with ?include=contributions. Numbers as v1 always had them; they are
+  // ambiguous once an event spans repos, so the refs ("owner/repo#123") carry
+  // the same list in the same order with the repo attached.
   issues?: number[];
   prs?: number[];
+  issueRefs?: string[];
+  prRefs?: string[];
 }
 
 export interface ApiEventBrief {
@@ -144,6 +148,8 @@ export interface ApiUser {
     mergedPRs: number;
     issues: number[];
     prs: number[];
+    issueRefs: string[];
+    prRefs: string[];
     awards: ApiAward[];
     certificateUrl: string;
   }[];
