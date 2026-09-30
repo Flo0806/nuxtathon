@@ -76,7 +76,6 @@ interface AuthorPage {
 
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 const MAX_PAGES = 10;
-const REPO = "repo:nuxt/nuxt";
 
 // Everything scoring needs from one PR.
 //
@@ -771,6 +770,7 @@ interface MarkerPage {
 // window. Returns one entry per marked issue with its credited logins.
 export async function fetchMarkerCredits(
   token: string,
+  scope: EventScope,
   from: string,
   to: string,
   keyword: string,
@@ -780,40 +780,46 @@ export async function fetchMarkerCredits(
   // decides (author, time, handles), this just spares fetching every other
   // closed issue with its comments. Quotes in the keyword would end the phrase.
   const phrase = keyword.replace(/"/g, " ").trim();
-  const search = `${REPO} is:issue is:closed closed:${toGithubStamp(from)}..${toGithubStamp(to)} "${phrase}" in:comments`;
+  // Every org and repo of the scope, one search each like the PR searches.
+  const searches = scopeSearches(
+    scope,
+    `is:issue is:closed closed:${toGithubStamp(from)}..${toGithubStamp(to)} "${phrase}" in:comments`,
+  );
   const fromMs = Date.parse(from);
   const toMs = Date.parse(to);
   const out: { issue: IssueRef; logins: string[]; facts: IssueFacts }[] = [];
-  let after: string | null = null;
+  for (const search of searches) {
+    let after: string | null = null;
 
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const { search: result } = (await graphql(token, MARKER_QUERY, { search, after })) as {
-      search: MarkerPage;
-    };
-    for (const issue of result.nodes) {
-      const ref =
-        typeof issue.number === "number" ? refOf({ ...issue, number: issue.number }) : null;
-      if (!ref) continue;
-      const logins = new Set<string>();
-      for (const comment of issue.comments?.nodes ?? []) {
-        if (!comment.author || !authors.has(comment.author.login.toLowerCase())) continue;
-        // The marker has to be written during this event. Without this a comment
-        // from an earlier Nuxtathon would count again whenever its issue is
-        // reopened and closed a second time.
-        const at = Date.parse(comment.createdAt);
-        if (!Number.isFinite(at) || at < fromMs || at > toMs) continue;
-        for (const login of parseCreditedLogins(comment.body, keyword)) logins.add(login);
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const { search: result } = (await graphql(token, MARKER_QUERY, { search, after })) as {
+        search: MarkerPage;
+      };
+      for (const issue of result.nodes) {
+        const ref =
+          typeof issue.number === "number" ? refOf({ ...issue, number: issue.number }) : null;
+        if (!ref) continue;
+        const logins = new Set<string>();
+        for (const comment of issue.comments?.nodes ?? []) {
+          if (!comment.author || !authors.has(comment.author.login.toLowerCase())) continue;
+          // The marker has to be written during this event. Without this a comment
+          // from an earlier Nuxtathon would count again whenever its issue is
+          // reopened and closed a second time.
+          const at = Date.parse(comment.createdAt);
+          if (!Number.isFinite(at) || at < fromMs || at > toMs) continue;
+          for (const login of parseCreditedLogins(comment.body, keyword)) logins.add(login);
+        }
+        if (logins.size > 0) {
+          out.push({
+            issue: ref,
+            logins: [...logins],
+            facts: toIssueFacts(issue),
+          });
+        }
       }
-      if (logins.size > 0) {
-        out.push({
-          issue: ref,
-          logins: [...logins],
-          facts: toIssueFacts(issue),
-        });
-      }
+      if (!result.pageInfo.hasNextPage) break;
+      after = result.pageInfo.endCursor;
     }
-    if (!result.pageInfo.hasNextPage) break;
-    after = result.pageInfo.endCursor;
   }
   return out;
 }
@@ -929,7 +935,7 @@ export async function fetchLeaderboard(
   const markerTo = window?.to ?? new Date().toISOString();
   const markersPending =
     config.closeMarker && markerAuthors.size > 0
-      ? fetchMarkerCredits(token, from, markerTo, config.closeMarker, markerAuthors)
+      ? fetchMarkerCredits(token, config.scope, from, markerTo, config.closeMarker, markerAuthors)
       : Promise.resolve([]);
   const submittedPending = Promise.all(
     scopeSearches(config.scope, `is:pr created:${toGithubStamp(from)}..${toGithubStamp(to)}`).map(
