@@ -26,9 +26,9 @@
       "icon": "i-ph-shuffle"
     }
   ],
-  "startsAt": "2026-07-18T00:00:00.000Z",
-  "endsAt": "2026-07-19T23:59:59.999Z",
-  "qualifyingBefore": "2026-07-14T00:00:00.000Z",
+  "startsAt": "2026-10-10T00:00:00.000Z",
+  "endsAt": "2026-10-11T23:59:59.999Z",
+  "qualifyingBefore": "2026-09-29T00:00:00.000Z",
   "coreTeam": [
     "danielroe",
     "atinux",
