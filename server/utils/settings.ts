@@ -24,13 +24,15 @@ export async function writeSettings(next: EventSettings): Promise<void> {
 // The organizer is pinned into both login lists so a settings edit can neither
 // rank them nor drop their marker comments.
 export async function resolveEventConfig(): Promise<EventConfig> {
-  const merged = { ...eventConfig, ...(await readSettings()) };
+  const settings = await readSettings();
+  // Normalized before the links: the "browse issues" button searches the scope.
+  const scope = normalizeScope(settings.scope, eventConfig.scope ?? DEFAULT_SCOPE);
+  const merged = { ...eventConfig, ...settings, scope };
   return {
     ...merged,
     coreTeam: withOrganizer(merged.coreTeam),
     markerAuthors: withOrganizer(merged.markerAuthors),
     links: expandLinks(merged),
-    scope: normalizeScope(merged.scope, eventConfig.scope ?? DEFAULT_SCOPE),
   };
 }
 

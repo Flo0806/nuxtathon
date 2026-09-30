@@ -63,3 +63,11 @@ export function scopeSummary(scope: EventScope): string {
     parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : (parts[0] ?? "");
   return `Pull requests count in ${list}.`;
 }
+
+// GitHub search qualifiers for everything in scope. Several `org:` / `repo:`
+// in one query act as OR. A repo inside a listed org is already covered.
+export function scopeTargets(scope: EventScope): string[] {
+  const orgs = new Set(scope.orgs);
+  const repos = scope.repos.filter((r) => !orgs.has(r.slice(0, r.indexOf("/"))));
+  return [...scope.orgs.map((o) => `org:${o}`), ...repos.map((r) => `repo:${r}`)];
+}

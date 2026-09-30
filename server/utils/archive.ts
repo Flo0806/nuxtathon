@@ -36,7 +36,13 @@ export const archivedConfig = (r: FinalResult): EventConfig => ({
   // Not the current default: a result without a scope predates scopes and ran
   // on nuxt/nuxt alone, even after the default grows to more repos.
   scope: normalizeScope(r.config?.scope, DEFAULT_SCOPE),
-  links: expandLinks({ ...eventConfig, ...r.config } as EventConfig),
+  // With the archived scope, not the current default, or #1's "browse issues"
+  // would suddenly search every org the next event covers.
+  links: expandLinks({
+    ...eventConfig,
+    ...r.config,
+    scope: normalizeScope(r.config?.scope, DEFAULT_SCOPE),
+  } as EventConfig),
   showCustomRules: r.config?.showCustomRules ?? eventConfig.showCustomRules ?? true,
 });
 

@@ -10,6 +10,7 @@ import type { ReviewItem } from "#shared/types/review";
 import { V5_LABEL } from "#shared/types/review";
 import type { IssueFacts, IssueFactsMap, ScoringRules } from "#shared/types/scoring";
 import { HOME_REPO, issueRef, splitIssueRef } from "#shared/utils/issue-ref";
+import { scopeTargets } from "#shared/utils/scope";
 import { recordBudget } from "./github-budget";
 import { registryMaintainers } from "./registry";
 
@@ -406,12 +407,7 @@ const isHuman = (author: { __typename: string } | null): boolean => author?.__ty
 // issues takes GitHub several seconds, and two of them together came close to
 // its ~10 s timeout (measured 8.4 s, and one 502).
 export function scopeSearches(scope: EventScope, qualifiers: string): string[] {
-  const orgs = new Set(scope.orgs);
-  // A repo inside a listed org is already covered by the org search.
-  const repos = scope.repos.filter((r) => !orgs.has(r.slice(0, r.indexOf("/"))));
-  return [...scope.orgs.map((o) => `org:${o}`), ...repos.map((r) => `repo:${r}`)].map(
-    (target) => `${target} ${qualifiers}`,
-  );
+  return scopeTargets(scope).map((target) => `${target} ${qualifiers}`);
 }
 
 // `pauseMs` spaces the requests out. Next to the hourly points GitHub also
