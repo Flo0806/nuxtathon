@@ -6,6 +6,7 @@ import type {
   ManualCredit,
 } from "#shared/types/event";
 import { earliestStart, validateWindow } from "#shared/utils/event-window";
+import { issueRefLabel, parseIssueRef } from "#shared/utils/issue-ref";
 
 definePageMeta({ layout: "admin" });
 
@@ -31,16 +32,22 @@ const { confirm } = useConfirm();
 const overview = ref<Overview | null>(null);
 const board = ref<Board | null>(null);
 const archive = ref<FinalResult[]>([]);
-const credits = ref<ManualCredit[]>([]);
-// Issue numbers the last save rejected, so their row inputs can be flagged.
-const invalidIssues = ref(new Set<number>());
+// The issue is edited as text ("#123", "owner/repo#123" or a URL); the server
+// parses it, so the form never has to agree with the stored ref format.
+type CreditRow = Omit<ManualCredit, "issue"> & { issue: string };
+const credits = ref<CreditRow[]>([]);
+// What the last save rejected, as sent or as parsed, so the rows can be flagged.
+const invalidIssues = ref(new Set<string>());
+const isInvalid = (c: CreditRow) =>
+  Boolean(c.issue) &&
+  (invalidIssues.value.has(c.issue) || invalidIssues.value.has(parseIssueRef(c.issue) ?? ""));
 const busy = ref(false);
 const loading = ref(false);
 
 async function loadOverview() {
   const o = await $fetch<Overview>("/api/admin/overview", { headers: auth.authHeaders() });
   overview.value = o;
-  credits.value = o.credits.map((c) => ({ ...c }));
+  credits.value = o.credits.map((c) => ({ ...c, issue: c.issue ? issueRefLabel(c.issue) : "" }));
 }
 async function loadBoard() {
   // Bust the browser cache; server keys on config, no extra GitHub hit.
@@ -85,8 +92,8 @@ async function saveCredits() {
     toast.success("Credits saved");
     await Promise.all([loadOverview(), loadBoard()]);
   } catch (e) {
-    // The 422 carries the offending issue numbers so we can point at the rows.
-    const bad = (e as { data?: { data?: { invalid?: number[] } } })?.data?.data?.invalid;
+    // The 422 carries the offending issues so we can point at the rows.
+    const bad = (e as { data?: { data?: { invalid?: string[] } } })?.data?.data?.invalid;
     if (Array.isArray(bad)) invalidIssues.value = new Set(bad);
     if (!auth.handle401(e)) toast.error(errMsg(e));
   } finally {
@@ -99,8 +106,7 @@ async function saveCredits() {
 // avatar request is not fired for every keystroke in a login field.
 const preview = computed(() => (board.value?.entries ?? []).filter((e) => e.score > 0));
 
-const addCredit = () =>
-  credits.value.push({ login: "", amount: 1, note: "", issueNumber: undefined });
+const addCredit = () => credits.value.push({ login: "", amount: 1, note: "", issue: "" });
 const removeCredit = (i: number) => credits.value.splice(i, 1);
 
 function downloadJson(filename: string, data: unknown) {
@@ -267,14 +273,11 @@ const { visible } = useAdminPage(loadAll);
           <input v-model="c.login" placeholder="github login" class="input w-40" />
           <input v-model.number="c.amount" type="number" aria-label="points" class="input w-20" />
           <input
-            v-model.number="c.issueNumber"
-            type="number"
+            v-model.trim="c.issue"
             placeholder="issue #"
-            aria-label="issue number (optional)"
+            aria-label="issue number or URL (optional)"
             class="input w-28"
-            :class="{
-              '!border-red-500 text-red-400': c.issueNumber && invalidIssues.has(c.issueNumber),
-            }"
+            :class="{ '!border-red-500 text-red-400': isInvalid(c) }"
             @input="invalidIssues.clear()"
           />
           <input

@@ -1,4 +1,4 @@
-import { issueSearchUrl, untouchedSearchQuery, issueSearchQuery } from "#shared/utils/issue-search";
+import { issueSearchUrl, scopeIssueQuery, untouchedSearchQuery } from "#shared/utils/issue-search";
 
 // Sends a contributor straight to an issue they could pick up. Default is the
 // useful variant from issue #5: nothing linked, nobody assigned. `?scope=all`
@@ -7,7 +7,7 @@ import { issueSearchUrl, untouchedSearchQuery, issueSearchQuery } from "#shared/
 export default defineEventHandler(async (event) => {
   const config = await resolveEventConfig();
   const all = getQuery(event).scope === "all";
-  const query = all ? issueSearchQuery(config) : untouchedSearchQuery(config);
+  const query = all ? scopeIssueQuery(config) : untouchedSearchQuery(config);
   const fallback = issueSearchUrl(config);
 
   const token = useRuntimeConfig().githubToken;

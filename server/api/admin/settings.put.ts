@@ -1,6 +1,7 @@
 import type { EventSettings } from "#shared/types/event";
 import { SETTINGS_KEYS } from "#shared/types/event";
 import { isKeyLocked } from "#shared/utils/event-window";
+import { scopeError } from "#shared/utils/scope";
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<{ settings?: EventSettings }>(event);
@@ -23,6 +24,25 @@ export default defineEventHandler(async (event) => {
     if (typeof v === "string" && v.trim() && Number.isNaN(Date.parse(v))) {
       throw createError({ statusCode: 422, statusMessage: `Invalid date for ${key}` });
     }
+  }
+  // A typo in a repo name must not silently drop it from the event.
+  if (!isKeyLocked(locked, "scope") && incoming.scope !== undefined) {
+    const problem = scopeError((incoming.scope ?? {}) as { repos?: unknown; orgs?: unknown });
+    if (problem) throw createError({ statusCode: 422, statusMessage: problem });
+  }
+  // Password managers ignore autocomplete="off" on masked fields and have filled
+  // an account password in here before. Only an actual webhook url is accepted,
+  // so a credential never lands in the settings file.
+  const webhook = incoming.discordWebhookUrl;
+  if (
+    typeof webhook === "string" &&
+    webhook.trim() &&
+    !/^https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\//.test(webhook.trim())
+  ) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: "The Discord webhook must be a https://discord.com/api/webhooks/... url",
+    });
   }
   // Validate the effective config (empty fields fall back to defaults), same as
   // the form does.

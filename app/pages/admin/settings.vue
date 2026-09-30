@@ -6,7 +6,9 @@ import type { EventLink } from "#shared/types/event";
 import { ISSUES_PLACEHOLDER, LINK_ICONS } from "#shared/types/event";
 import type { ScoringRules } from "#shared/types/scoring";
 import { DEFAULT_SCORING } from "#shared/types/scoring";
+import { DEFAULT_SCOPE } from "#shared/types/scope";
 import { isKeyLocked, validateWindow } from "#shared/utils/event-window";
+import { scopeError, scopeSummary } from "#shared/utils/scope";
 
 definePageMeta({ layout: "admin" });
 
@@ -128,9 +130,12 @@ const FIELDS: Field[] = [
   },
 ];
 const GROUPS = ["Content", "Event", "Integrations"] as const;
-// Everything except `scoring`, which is an object and has its own editor below.
-type TextKey = Exclude<SettingsKey, "scoring" | "links">;
-const TEXT_KEYS = SETTINGS_KEYS.filter((k): k is TextKey => k !== "scoring" && k !== "links");
+// Everything except the object-valued keys, which have their own editors (or,
+// for `scope`, none yet: it is carried through unchanged on save).
+type TextKey = Exclude<SettingsKey, "scoring" | "links" | "scope">;
+const TEXT_KEYS = SETTINGS_KEYS.filter(
+  (k): k is TextKey => k !== "scoring" && k !== "links" && k !== "scope",
+);
 
 const toast = useToast();
 const auth = useAdminAuth();
@@ -146,6 +151,29 @@ const form = reactive(Object.fromEntries(TEXT_KEYS.map((k) => [k, ""])) as Recor
 // because an object is not directly editable in a form.
 const scoring = reactive<ScoringRules>(structuredClone(DEFAULT_SCORING));
 const labelRows = ref<{ label: string; points: number }[]>([]);
+// Scope as the form edits it: one repo or org per line, commas work too.
+const scopeForm = reactive({ repos: "", orgs: "", registry: false });
+const scopeLocked = computed(() => isKeyLocked(locked.value, "scope"));
+const scopeLines = (text: string) =>
+  text
+    .split(/[\n,]/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+const scopeValue = computed(() => ({
+  repos: scopeLines(scopeForm.repos),
+  orgs: scopeLines(scopeForm.orgs),
+  registry: scopeForm.registry,
+}));
+const scopeProblem = computed(() => (scopeLocked.value ? null : scopeError(scopeValue.value)));
+const scopePreview = computed(() =>
+  scopeProblem.value
+    ? ""
+    : scopeSummary({
+        ...scopeValue.value,
+        repos: scopeValue.value.repos.map((r) => r.toLowerCase()),
+        orgs: scopeValue.value.orgs.map((o) => o.toLowerCase()),
+      }),
+);
 // Buttons under the intro. The issues link keeps its placeholder here; the
 // server expands it, so the cutoff date is never typed in.
 const links = ref<EventLink[]>([]);
@@ -226,7 +254,9 @@ const windowErrors = computed(() =>
   ),
 );
 const fieldError = (key: TextKey) => (windowErrors.value as Partial<Record<TextKey, string>>)[key];
-const formValid = computed(() => Object.keys(windowErrors.value).length === 0);
+const formValid = computed(
+  () => Object.keys(windowErrors.value).length === 0 && !scopeProblem.value,
+);
 
 // Same renderer as the public page.
 const previews = computed(() => ({
@@ -251,13 +281,19 @@ function apply(p: Payload) {
   }
   Object.assign(
     scoring,
-    structuredClone(p.settings.scoring ?? p.defaults.scoring ?? DEFAULT_SCORING),
+    // After a save `p.defaults` is the reactive `defaults.value`, which
+    // structuredClone refuses; toRaw hands it the plain object.
+    structuredClone(toRaw(p.settings.scoring ?? p.defaults.scoring ?? DEFAULT_SCORING)),
   );
   labelRows.value = Object.entries(scoring.labelBonus.points).map(([label, points]) => ({
     label,
     points,
   }));
   links.value = (p.settings.links ?? p.defaults.links ?? []).map((l) => ({ ...l }));
+  const scope = p.settings.scope ?? p.defaults.scope ?? DEFAULT_SCOPE;
+  scopeForm.repos = scope.repos.join("\n");
+  scopeForm.orgs = scope.orgs.join("\n");
+  scopeForm.registry = scope.registry;
 }
 
 async function load() {
@@ -273,6 +309,7 @@ async function save() {
   busy.value = true;
   try {
     const settings = Object.fromEntries(TEXT_KEYS.map((k) => [k, fromForm(k)])) as EventSettings;
+    settings.scope = scopeValue.value;
     settings.links = links.value
       .map((l) => ({ ...l, label: l.label.trim(), url: l.url.trim() }))
       .filter((l) => l.label && l.url);
@@ -400,7 +437,7 @@ const { visible } = useAdminPage(load);
           :type="
             f.type === 'datetime' ? 'datetime-local' : f.type === 'secret' ? 'password' : 'text'
           "
-          autocomplete="off"
+          :autocomplete="f.type === 'secret' ? 'new-password' : 'off'"
           :placeholder="defaultOf(f.key)"
           :disabled="isLocked(f)"
           class="input disabled:opacity-50"
@@ -482,6 +519,78 @@ const { visible } = useAdminPage(load);
           Fixed to UTC for now; dates above and on the public page are UTC.
         </p>
         <input value="UTC" disabled class="input opacity-50" aria-label="display time zone" />
+      </div>
+
+      <div v-if="g === 'Event'" class="flex flex-col gap-3">
+        <div class="flex items-center gap-3">
+          <span class="font-mono text-sm uppercase tracking-wider text-fg">Scope</span>
+          <span v-if="scopeLocked" class="text-[0.65rem] text-muted">
+            <span class="i-ph-lock inline-block align-[-2px]" aria-hidden="true" /> locked in this
+            phase
+          </span>
+        </div>
+        <p class="font-mono text-[0.72rem] leading-relaxed text-muted">
+          Decides which pull requests count. A PR counts when it was opened in one of the places
+          below; the issue it closes may live in any repository. Fill in either field or both. Locks
+          the moment the event starts.
+        </p>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label class="flex flex-col gap-1">
+            <span class="font-mono text-[0.72rem] uppercase tracking-wider text-fg">
+              Organizations
+            </span>
+            <textarea
+              v-model="scopeForm.orgs"
+              rows="3"
+              placeholder="nuxt"
+              :disabled="scopeLocked"
+              class="input font-mono disabled:opacity-50"
+              :class="{ '!border-red-500': scopeProblem }"
+            />
+            <span class="font-mono text-[0.68rem] leading-relaxed text-muted">
+              One per line or comma-separated. Every repository of the organization counts,
+              including ones created later: <code>nuxt</code> covers nuxt/nuxt, nuxt/ui, nuxt/icon
+              and all the others.
+            </span>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="font-mono text-[0.72rem] uppercase tracking-wider text-fg">
+              Single repositories
+            </span>
+            <textarea
+              v-model="scopeForm.repos"
+              rows="3"
+              placeholder="owner/repo"
+              :disabled="scopeLocked"
+              class="input font-mono disabled:opacity-50"
+              :class="{ '!border-red-500': scopeProblem }"
+            />
+            <span class="font-mono text-[0.68rem] leading-relaxed text-muted">
+              One per line or comma-separated, as owner/repo. Only for repositories outside the
+              organizations on the left; usually empty.
+            </span>
+          </label>
+        </div>
+        <label class="panel flex flex-wrap items-center gap-3 px-4 py-3">
+          <input
+            v-model="scopeForm.registry"
+            type="checkbox"
+            :disabled="scopeLocked"
+            class="check"
+          />
+          <span class="font-mono text-sm text-fg">Modules from the Nuxt registry</span>
+          <span class="font-mono text-[0.72rem] leading-relaxed text-muted">
+            Third-party modules listed on nuxt.com/modules, in repositories nobody here controls.
+            They are searched once an hour and every PR found goes to the review queue, so the
+            organizers decide. A maintainer's PRs to their own module do not count.
+          </span>
+        </label>
+        <span v-if="scopeProblem" class="font-mono text-[0.72rem] text-red-400">
+          {{ scopeProblem }}
+        </span>
+        <p v-else class="panel px-4 py-3 font-mono text-[0.72rem] leading-relaxed text-mint">
+          {{ scopePreview }}
+        </p>
       </div>
 
       <div v-if="g === 'Event'" class="flex flex-col gap-4">

@@ -4,7 +4,7 @@ export default defineEventHandler(async (event) => {
   return withWatchLock(user.login, async () => {
     const state = await readWatch(user.login);
     const now = new Date().toISOString();
-    const seen = Object.fromEntries(state.watching.map((n) => [String(n), now]));
+    const seen = Object.fromEntries(state.watching.map((r) => [r, now]));
     await writeWatch(user.login, { ...state, seen });
     return { seen };
   });

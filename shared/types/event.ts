@@ -1,3 +1,6 @@
+import type { IssueRef } from "./issue-ref";
+import type { ReviewDecision } from "./review";
+import type { EventScope } from "./scope";
 import type { ScoringRules } from "./scoring";
 
 // Static, committed event configuration (source: config/event.json).
@@ -37,6 +40,9 @@ export interface EventConfig {
   // Point rules. Every rule off means one point per qualifying closed issue,
   // which is how the first event was scored.
   scoring: ScoringRules;
+  // Where counted PRs may live. Archived results without one ran on nuxt/nuxt
+  // (DEFAULT_SCOPE); config/event.json holds the default for new events.
+  scope: EventScope;
   // IANA zone used purely for rendering dates and the countdown. Not editable
   // via settings yet: UTC is mandatory until the admin forms handle zones.
   displayTimeZone: string;
@@ -78,6 +84,10 @@ export const RANDOM_PLACEHOLDER = "{random}";
 // Always part of coreTeam and markerAuthors, whatever the settings say.
 export const ORGANIZER_LOGIN = "danielroe";
 
+// The site's developer. Sees the GitHub budget counter on every page when signed
+// in with GitHub, without the admin login.
+export const DEVELOPER_LOGIN = "Flo0806";
+
 // Texts the admin may override at any time.
 export const CONTENT_KEYS = [
   "title",
@@ -98,6 +108,7 @@ export const MECHANICS_KEYS = [
   "closeMarker",
   "markerAuthors",
   "scoring",
+  "scope",
 ] as const;
 // Editable in every phase, and left out of FinalResult.config (a webhook url is
 // a credential, not part of an event's record).
@@ -114,9 +125,10 @@ export type EventSettings = Partial<Pick<EventConfig, SettingsKey>>;
 // Coarse lifecycle that drives what the public site shows.
 export type EventPhase = "upcoming" | "live" | "evaluating" | "results";
 
-// Per-login GitHub issue/pr ids a user is credited with.
+// Per-login issues and PRs a user is credited with. Stored #1 results hold bare
+// numbers; readRuntimeState normalizes them, so code only ever sees refs.
 export interface ContributionIds {
-  [login: string]: { issues: number[]; prs: number[] };
+  [login: string]: { issues: IssueRef[]; prs: IssueRef[] };
 }
 
 export interface LeaderboardEntry {
@@ -157,9 +169,10 @@ export interface ManualCredit {
   login: string;
   amount: number;
   note: string;
-  // Optional nuxt/nuxt issue this credit stands for. Validated on save; when set,
-  // it folds into the public "Issues closed" count (deduped against PR-closed).
-  issueNumber?: number;
+  // Optional issue this credit stands for. Validated on save; when set, it folds
+  // into the public "Issues closed" count (deduped against PR-closed). Credits
+  // stored before refs carry `issueNumber` instead, normalized on read.
+  issue?: IssueRef;
 }
 
 // Curated Phosphor icons an award may carry. Rendered on the site via UnoCSS
@@ -215,6 +228,10 @@ export interface FinalResult {
   standings: LeaderboardEntry[];
   coreTeam: LeaderboardEntry[];
   contributions: ContributionIds;
+  // Reviewed PRs that were confirmed, as decided at fire. Their points are
+  // already in the standings (as manual credits); this is the record of why.
+  // Optional: events before the review queue have none.
+  reviews?: ReviewDecision[];
 }
 
 // Mutable, admin-writable state. Snapshots live under a separate storage key

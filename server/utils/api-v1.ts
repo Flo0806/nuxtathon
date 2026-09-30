@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import type { H3Event } from "h3";
 import type { ApiAvatar, ApiContributor, ApiMeta } from "#shared/types/api";
 import type { EventPhase, LeaderboardEntry } from "#shared/types/event";
+import type { IssueRef } from "#shared/types/issue-ref";
+import { splitIssueRef } from "#shared/utils/issue-ref";
 
 // The ranking is recomputed at most every 5 minutes, so nothing downstream can
 // learn anything new before that.
@@ -73,9 +75,14 @@ export function apiAvatar(url: string): ApiAvatar {
   return { small: at(80), large: at(256) };
 }
 
+// v1 publishes plain numbers, as it did when everything lived in nuxt/nuxt.
+// Refs are added next to them, never instead, so existing consumers keep working.
+export const apiNumbers = (refs: IssueRef[] = []): number[] =>
+  refs.map((r) => splitIssueRef(r).number);
+
 export function apiContributor(
   entry: LeaderboardEntry,
-  contributions?: { issues: number[]; prs: number[] },
+  contributions?: { issues: IssueRef[]; prs: IssueRef[] },
 ): ApiContributor {
   return {
     rank: entry.rank,
@@ -85,7 +92,14 @@ export function apiContributor(
     score: entry.score,
     closedIssues: entry.closedIssues,
     mergedPRs: entry.mergedPRs,
-    ...(contributions ? { issues: contributions.issues, prs: contributions.prs } : {}),
+    ...(contributions
+      ? {
+          issues: apiNumbers(contributions.issues),
+          prs: apiNumbers(contributions.prs),
+          issueRefs: contributions.issues,
+          prRefs: contributions.prs,
+        }
+      : {}),
   };
 }
 

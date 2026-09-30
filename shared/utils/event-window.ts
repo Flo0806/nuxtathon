@@ -20,8 +20,10 @@ export function earliestStart(now: number = Date.now()): number {
 // running event), evaluating locks the end as well.
 export function lockedSettingsKeys(phase: EventPhase, frozen: boolean): string[] {
   if (frozen || phase === "results") return ["*"];
-  if (phase === "live") return ["startsAt", "qualifyingBefore", "scoring"];
-  if (phase === "evaluating") return ["startsAt", "qualifyingBefore", "endsAt", "scoring"];
+  if (phase === "live") return ["startsAt", "qualifyingBefore", "scoring", "scope"];
+  if (phase === "evaluating") {
+    return ["startsAt", "qualifyingBefore", "endsAt", "scoring", "scope"];
+  }
   return [];
 }
 export const isKeyLocked = (locked: readonly string[], key: string) =>

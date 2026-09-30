@@ -63,8 +63,10 @@ export default defineEventHandler(async (event) => {
         score: entry.score,
         closedIssues: entry.closedIssues,
         mergedPRs: entry.mergedPRs,
-        issues: result.contributions?.[entry.login]?.issues ?? [],
-        prs: result.contributions?.[entry.login]?.prs ?? [],
+        issues: apiNumbers(result.contributions?.[entry.login]?.issues),
+        prs: apiNumbers(result.contributions?.[entry.login]?.prs),
+        issueRefs: result.contributions?.[entry.login]?.issues ?? [],
+        prRefs: result.contributions?.[entry.login]?.prs ?? [],
         awards,
         certificateUrl: `${site}/archive/${slug}/certificate/${entry.login}.pdf`,
       });

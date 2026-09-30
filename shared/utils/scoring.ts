@@ -1,3 +1,4 @@
+import type { IssueRef } from "../types/issue-ref";
 import type { IssueFacts, IssueFactsMap, ScoringRules } from "../types/scoring";
 import { DEFAULT_SCORING } from "../types/scoring";
 
@@ -36,14 +37,14 @@ export function issueScore(
 // Total for one contributor. `manualCredits` are discretionary points and are
 // never weighted: the organizer already decided what they are worth.
 export function scoreFor(
-  issues: number[],
+  issues: IssueRef[],
   mergedPrs: number,
   manualCredits: number,
   rules: ScoringRules,
   facts: IssueFactsMap,
   now: number = Date.now(),
 ): number {
-  let total = issues.reduce((sum, n) => sum + issueScore(facts[n], rules, now), 0);
+  let total = issues.reduce((sum, ref) => sum + issueScore(facts[ref], rules, now), 0);
   if (rules.prPoints.enabled) total += mergedPrs * rules.prPoints.points;
   total += manualCredits;
   // Two decimals keep fractional bonuses usable without float noise.

@@ -1,4 +1,5 @@
 import type { ContributionIds, LeaderboardEntry, ManualCredit } from "../types/event";
+import type { IssueRef } from "../types/issue-ref";
 import type { IssueFactsMap, ScoringRules } from "../types/scoring";
 import { scoreFor } from "./scoring";
 
@@ -14,14 +15,14 @@ export interface ScoringContext {
 // A credit for a login not in the list (issue closed without a PR) becomes a new
 // entry; its avatar comes from the github.com/<login>.png redirect.
 //
-// `alreadyClosed` holds issue numbers already credited by a PR or an organizer
+// `alreadyClosed` holds issues already credited by a PR or an organizer
 // marker. A manual credit pointing at one of those is dropped, so the same issue
-// cannot be scored twice via two mechanisms. Credits without an issueNumber (pure
+// cannot be scored twice via two mechanisms. Credits without an issue (pure
 // discretionary points) always apply.
 export function applyCredits(
   entries: LeaderboardEntry[],
   credits: ManualCredit[],
-  alreadyClosed: Set<number> = new Set(),
+  alreadyClosed: Set<IssueRef> = new Set(),
   scoring?: ScoringContext,
 ): LeaderboardEntry[] {
   // Keyed by lowercased login so a manual credit for "norbiros" merges into an
@@ -29,7 +30,7 @@ export function applyCredits(
   const byLogin = new Map(entries.map((e) => [e.login.toLowerCase(), { ...e }]));
 
   for (const credit of credits) {
-    if (credit.issueNumber && alreadyClosed.has(credit.issueNumber)) continue;
+    if (credit.issue && alreadyClosed.has(credit.issue)) continue;
     const key = credit.login.toLowerCase();
     const existing = byLogin.get(key);
     if (existing) {

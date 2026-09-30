@@ -1,10 +1,12 @@
 {
   "title": "Nuxtathon",
-  "eyebrow": "#1 · Community Hackathon",
-  "description": "The first **Nuxt** community hackathon. Two days, one mission: close as many open [`nuxt/nuxt`](https://github.com/nuxt/nuxt) issues as we can.",
+  "eyebrow": "#2 · Community Hackathon",
+  "description": "The second **Nuxt** community hackathon. Two days across the whole ecosystem: [`nuxt/nuxt`](https://github.com/nuxt/nuxt), every `nuxt/*` and `nuxt-modules/*` repository, and the modules on [nuxt.com](https://nuxt.com/modules).",
   "rules": [
-    "All issues and PRs must target the core [`nuxt/nuxt`](https://github.com/nuxt/nuxt) repository.",
-    "To count, an issue must have been created before 13 July."
+    "Issues count when they were created before 29 September.",
+    "A pull request counts when it was opened during the event and is merged before the results are frozen.",
+    "Work on a repository you maintain yourself does not count.",
+    "Pull requests that close no issue, such as migrating a module to Nuxt v5 (label `nuxtathon-v5`), are reviewed by the organizers."
   ],
   "showCustomRules": true,
   "links": [
@@ -24,9 +26,9 @@
       "icon": "i-ph-shuffle"
     }
   ],
-  "startsAt": "2026-07-18T00:00:00.000Z",
-  "endsAt": "2026-07-19T23:59:59.999Z",
-  "qualifyingBefore": "2026-07-14T00:00:00.000Z",
+  "startsAt": "2026-10-10T00:00:00.000Z",
+  "endsAt": "2026-10-11T23:59:59.999Z",
+  "qualifyingBefore": "2026-09-29T00:00:00.000Z",
   "coreTeam": [
     "danielroe",
     "atinux",
@@ -39,6 +41,11 @@
   ],
   "closeMarker": "nuxtathon closed",
   "markerAuthors": ["danielroe"],
+  "scope": {
+    "repos": [],
+    "orgs": ["nuxt", "nuxt-modules"],
+    "registry": true
+  },
   "displayTimeZone": "UTC",
   "discordWebhookUrl": "",
   "discordAnnounce": false,

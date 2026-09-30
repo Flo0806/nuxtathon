@@ -1,5 +1,7 @@
 import type { ArchiveSummary, EventConfig, FinalResult } from "#shared/types/event";
+import { DEFAULT_SCOPE } from "#shared/types/scope";
 import { DEFAULT_SCORING } from "#shared/types/scoring";
+import { normalizeScope } from "#shared/utils/scope";
 
 // Slugs for a whole list: the start date, with "-2", "-3" appended when two
 // events share a day (test runs, mostly). Numbered in firing order so a later
@@ -31,7 +33,16 @@ export const archivedConfig = (r: FinalResult): EventConfig => ({
   // Results fired before these fields existed carry neither, and an older result
   // may carry an older scoring shape, so it is normalized rather than trusted.
   scoring: normalizeScoringRules(r.config?.scoring, eventConfig.scoring ?? DEFAULT_SCORING),
-  links: expandLinks({ ...eventConfig, ...r.config } as EventConfig),
+  // Not the current default: a result without a scope predates scopes and ran
+  // on nuxt/nuxt alone, even after the default grows to more repos.
+  scope: normalizeScope(r.config?.scope, DEFAULT_SCOPE),
+  // With the archived scope, not the current default, or #1's "browse issues"
+  // would suddenly search every org the next event covers.
+  links: expandLinks({
+    ...eventConfig,
+    ...r.config,
+    scope: normalizeScope(r.config?.scope, DEFAULT_SCOPE),
+  } as EventConfig),
   showCustomRules: r.config?.showCustomRules ?? eventConfig.showCustomRules ?? true,
 });
 

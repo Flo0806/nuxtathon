@@ -33,6 +33,9 @@ export default defineNuxtConfig({
     storage: {
       state: { driver: "fs", base: ".data/state" },
       cache: { driver: "fs", base: ".data/cache" },
+      // Flo's list backlog per repo (server/utils/issue-sync.ts). Rebuildable, and
+      // apart from "cache" because admin saves clear that mount entirely.
+      issues: { driver: "fs", base: ".data/issues" },
     },
   },
 });

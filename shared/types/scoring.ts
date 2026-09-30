@@ -1,3 +1,5 @@
+import type { IssueRef } from "./issue-ref";
+
 // Per-event scoring configuration. Every rule is off by default, so an empty
 // block scores exactly like the original event: one point per qualifying closed
 // issue, plus manual credits. Locked once the event starts (see settingsLock).
@@ -31,4 +33,4 @@ export interface IssueFacts {
   labels: string[];
   upvotes: number;
 }
-export type IssueFactsMap = Record<number, IssueFacts>;
+export type IssueFactsMap = Record<IssueRef, IssueFacts>;

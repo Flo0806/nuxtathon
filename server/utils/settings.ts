@@ -1,6 +1,8 @@
 import type { EventConfig, EventSettings, SettingsKey } from "#shared/types/event";
 import { ORGANIZER_LOGIN, SETTINGS_KEYS } from "#shared/types/event";
+import { DEFAULT_SCOPE } from "#shared/types/scope";
 import type { ScoringRules } from "#shared/types/scoring";
+import { normalizeScope } from "#shared/utils/scope";
 import type { EventWindow } from "#shared/utils/event-window";
 import { lockedSettingsKeys, validateWindow } from "#shared/utils/event-window";
 
@@ -22,7 +24,10 @@ export async function writeSettings(next: EventSettings): Promise<void> {
 // The organizer is pinned into both login lists so a settings edit can neither
 // rank them nor drop their marker comments.
 export async function resolveEventConfig(): Promise<EventConfig> {
-  const merged = { ...eventConfig, ...(await readSettings()) };
+  const settings = await readSettings();
+  // Normalized before the links: the "browse issues" button searches the scope.
+  const scope = normalizeScope(settings.scope, eventConfig.scope ?? DEFAULT_SCOPE);
+  const merged = { ...eventConfig, ...settings, scope };
   return {
     ...merged,
     coreTeam: withOrganizer(merged.coreTeam),
@@ -68,6 +73,10 @@ export function pickSettings(input: EventSettings): EventSettings {
       // Object-valued; stored only when it actually differs from the default.
       const merged = normalizeScoringRules(value as ScoringRules | undefined, eventConfig.scoring);
       if (JSON.stringify(merged) !== JSON.stringify(eventConfig.scoring)) out.scoring = merged;
+    } else if (key === "scope") {
+      const fallbackScope = eventConfig.scope ?? DEFAULT_SCOPE;
+      const scope = normalizeScope(value, fallbackScope);
+      if (JSON.stringify(scope) !== JSON.stringify(fallbackScope)) out.scope = scope;
     } else if (typeof fallback === "boolean") {
       if (typeof value === "boolean" && value !== fallback) {
         (out as Record<string, unknown>)[key] = value;

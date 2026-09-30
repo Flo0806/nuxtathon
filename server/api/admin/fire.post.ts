@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Award, FinalResult } from "#shared/types/event";
 import { isDefaultScoring, scoreUnit } from "#shared/utils/scoring";
 import { announceFinal } from "~~/server/utils/announce";
+import { activeReviews, readReviewDecisions, reviewCredits } from "~~/server/utils/review";
 
 // Freeze the ranking, release prizes, and archive the result in one shot.
 export default defineEventHandler(async () => {
@@ -14,25 +15,32 @@ export default defineEventHandler(async () => {
   const config = await resolveEventConfig();
   const result = await fetchLeaderboard(config, token);
 
-  // Same order as the live endpoint: dedup manual credits against PR/marker closes
-  // first, then fold the remaining manual issue numbers into the frozen count so it
-  // matches what was on screen.
+  // Same order as the live endpoint: dedup manual credits against the issues
+  // somebody already scored, then fold the remaining manual issues into the
+  // frozen count so it matches what was on screen.
   const closed = new Set(result.closedIssues);
-  const standings = applyCredits(result.entries, state.credits, closed, {
-    rules: config.scoring,
-    facts: result.issueFacts,
-    contributions: result.contributions,
-  });
+  // Confirmed review decisions join as credits; see reviewCredits for why.
+  const reviews = activeReviews(await readReviewDecisions(), result.contributions);
+  const standings = applyCredits(
+    result.entries,
+    [...state.credits, ...reviewCredits(reviews)],
+    new Set(result.creditedIssues),
+    {
+      rules: config.scoring,
+      facts: result.issueFacts,
+      contributions: result.contributions,
+    },
+  );
   const contributions = { ...result.contributions };
 
   for (const c of state.credits) {
-    if (!c.issueNumber) continue;
-    closed.add(c.issueNumber);
+    if (!c.issue) continue;
+    closed.add(c.issue);
     const key = c.login.toLowerCase();
     const existing = standings.find((e) => e.login.toLowerCase() === key);
     const login = existing?.login ?? c.login;
     const bucket = (contributions[login] ??= { issues: [], prs: [] });
-    if (!bucket.issues.includes(c.issueNumber)) bucket.issues.push(c.issueNumber);
+    if (!bucket.issues.includes(c.issue)) bucket.issues.push(c.issue);
   }
 
   // Re-firing the same event (unfreeze, wait for late merges, fire again) must
@@ -73,6 +81,7 @@ export default defineEventHandler(async () => {
     standings,
     coreTeam: result.coreTeam,
     contributions,
+    reviews,
   };
 
   // Upsert by (title, startsAt) so re-firing the same event does not duplicate.
