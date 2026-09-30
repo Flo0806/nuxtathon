@@ -71,3 +71,12 @@ export function scopeTargets(scope: EventScope): string[] {
   const repos = scope.repos.filter((r) => !orgs.has(r.slice(0, r.indexOf("/"))));
   return [...scope.orgs.map((o) => `org:${o}`), ...repos.map((r) => `repo:${r}`)];
 }
+
+// Where the work happened, for sentences such as "closed 12 issues <place>".
+// A single repository is named; anything wider is the ecosystem.
+export function scopePlace(scope: EventScope): string {
+  if (scope.repos.length === 1 && !scope.orgs.length && !scope.registry) {
+    return `in ${scope.repos[0]}`;
+  }
+  return "across the Nuxt ecosystem";
+}

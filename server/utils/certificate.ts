@@ -1,5 +1,7 @@
 import { Box, Column, Document, Image, Page, Positioned, Row, Svg, Text } from "@jasy/pdf";
 import type { Award, EventConfig, LeaderboardEntry } from "#shared/types/event";
+import { DEFAULT_SCOPE } from "#shared/types/scope";
+import { scopePlace } from "#shared/utils/scope";
 import { isDefaultScoring, scoreUnit } from "#shared/utils/scoring";
 import { formatWindow } from "./og-image";
 
@@ -158,9 +160,12 @@ function finish(input: CertificateInput, kind: string, page: ReturnType<typeof P
 export function participationCertificate(input: CertificateInput) {
   const { config, entry, totalContributors } = input;
   // With bonus rules on, the score is points, not a count of issues.
+  // #1 ran on nuxt/nuxt alone and keeps saying so; later events name the
+  // ecosystem (the archived scope decides, see archivedConfig).
+  const place = scopePlace(config.scope ?? DEFAULT_SCOPE);
   const achievement = isDefaultScoring(config.scoring)
-    ? `closed ${scoreUnit(config.scoring, entry.score)} in nuxt/nuxt`
-    : `scored ${scoreUnit(config.scoring, entry.score)} closing ${entry.closedIssues} ${entry.closedIssues === 1 ? "issue" : "issues"} in nuxt/nuxt`;
+    ? `closed ${scoreUnit(config.scoring, entry.score)} ${place}`
+    : `scored ${scoreUnit(config.scoring, entry.score)} closing ${entry.closedIssues} ${entry.closedIssues === 1 ? "issue" : "issues"} ${place}`;
   const body = Column({ gap: 8, align: "center" }, [
     mono(
       `took part in ${config.title} ${config.eyebrow}, the Nuxt community hackathon, and ${achievement} during ${formatWindow(config)}.`,

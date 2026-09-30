@@ -40,7 +40,8 @@ export interface EventConfig {
   // Point rules. Every rule off means one point per qualifying closed issue,
   // which is how the first event was scored.
   scoring: ScoringRules;
-  // Where counted PRs may live. The default is the core repo, as in #1.
+  // Where counted PRs may live. Archived results without one ran on nuxt/nuxt
+  // (DEFAULT_SCOPE); config/event.json holds the default for new events.
   scope: EventScope;
   // IANA zone used purely for rendering dates and the countdown. Not editable
   // via settings yet: UTC is mandatory until the admin forms handle zones.
