@@ -44,7 +44,10 @@ const auth = useAdminAuth();
 // Last full weekend in UTC, the natural test window for a two-day event.
 function lastWeekend(): { from: string; to: string } {
   const d = new Date();
-  const back = ((d.getUTCDay() + 1) % 7) + 7;
+  // Days since the last Saturday; on Saturday and Sunday that weekend is still
+  // running, so the one before it is the last full one.
+  const sinceSaturday = (d.getUTCDay() + 1) % 7;
+  const back = sinceSaturday <= 1 ? sinceSaturday + 7 : sinceSaturday;
   const saturday = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - back));
   const sunday = new Date(saturday.getTime() + 86_400_000);
   return { from: saturday.toISOString().slice(0, 10), to: sunday.toISOString().slice(0, 10) };

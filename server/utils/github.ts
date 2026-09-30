@@ -908,9 +908,12 @@ export async function fetchLeaderboard(
   entries: LeaderboardEntry[];
   coreTeam: LeaderboardEntry[];
   stats: EventStats;
-  // Issues closed by event PRs, exposed so the endpoint can dedup manual credits
-  // against them before counting.
+  // Every issue an event PR or marker closed, for the headline count.
   closedIssues: IssueRef[];
+  // The ones somebody already got points for (qualifying issues of scored PRs,
+  // and marked issues). Manual credits dedupe against these, not against every
+  // closed issue: an issue closed by a PR that scored nothing is still free.
+  creditedIssues: IssueRef[];
   // Per-login credited issues and PRs (deep-linking + reuse).
   contributions: ContributionIds;
   // Age, labels and upvotes of every closed issue, for weighted scoring.
@@ -963,6 +966,7 @@ export async function fetchLeaderboard(
   // visible counter should tick for anything resolved during the event, including
   // issues opened mid-event (Daniel files a fresh bug, someone fixes it same day).
   const closedInWindow = new Set<IssueRef>();
+  const creditedIssues = new Set<IssueRef>();
   const review: ReviewItem[] = [];
 
   const issueFacts: IssueFactsMap = {};
@@ -985,6 +989,7 @@ export async function fetchLeaderboard(
     }
     if (verdict.path !== "auto") continue;
     const qualifying = verdict.qualifying;
+    for (const ref of qualifying) creditedIssues.add(ref);
     const credited = new Set(verdict.contributors.map((l) => l.toLowerCase()));
 
     // Full credit for every credited contributor; issues are deduped per person
@@ -1010,8 +1015,10 @@ export async function fetchLeaderboard(
   }
 
   // Organizer-marked closes: issues resolved without a PR that Daniel credits via
-  // a comment ("nuxtathon closed @user"). Authorized authors only, and any issue a
-  // PR already closed is skipped so neither the count nor the credit doubles up.
+  // a comment ("nuxtathon closed @user"). Authorized authors only, and an issue a
+  // scored PR already earned points for is skipped so the credit never doubles
+  // up. One closed by a PR that scored nothing (review path, bots) stays open to
+  // a marker, since nobody got anything for it.
   //
   // The window runs to *now*, not to `endsAt`: marking happens by hand, and the
   // evaluating phase exists precisely to work through what is left. Firing ends
@@ -1023,9 +1030,10 @@ export async function fetchLeaderboard(
   const missingNames = new Map<string, Tally>();
 
   for (const { issue, logins, facts } of markers) {
-    if (closedInWindow.has(issue)) continue;
+    if (creditedIssues.has(issue)) continue;
+    creditedIssues.add(issue);
     closedInWindow.add(issue);
-    issueFacts[issue] = facts;
+    issueFacts[issue] ??= facts;
     for (const login of logins) {
       if (isBotLogin(login)) continue;
       // Same case-insensitive keying: a marker "@norbiros" merges into the PR's
@@ -1092,6 +1100,7 @@ export async function fetchLeaderboard(
     coreTeam,
     stats: { submitted, merged, issuesClosed, upvotes },
     closedIssues: [...closedInWindow],
+    creditedIssues: [...creditedIssues],
     contributions,
     issueFacts,
     review: review.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),

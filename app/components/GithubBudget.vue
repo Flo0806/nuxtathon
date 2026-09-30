@@ -57,9 +57,10 @@ async function load(probe = false) {
 // minutes; half a minute keeps the counter honest without chattiness.
 let timer: ReturnType<typeof setInterval> | undefined;
 onMounted(async () => {
+  // Started before the first await, so an unmount while loading still clears it.
+  timer = setInterval(() => void load(), 30_000);
   await load();
   if (!budget.value?.readings.graphql) await load(true);
-  timer = setInterval(() => void load(), 30_000);
 });
 onBeforeUnmount(() => clearInterval(timer));
 

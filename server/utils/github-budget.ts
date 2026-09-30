@@ -73,16 +73,23 @@ export function recordBudget(
 
   const resetAt = new Date(reset * 1000).toISOString();
   const previous = readings[resource];
-  const cost =
-    previous && previous.resetAt === resetAt ? Math.max(0, previous.remaining - remaining) : null;
+  const sameWindow = previous?.resetAt === resetAt;
+  const cost = previous && sameWindow ? Math.max(0, previous.remaining - remaining) : null;
   const seenAt = new Date().toISOString();
-  readings[resource] = {
-    remaining,
-    limit,
-    used: Number(headers?.get("x-ratelimit-used")) || limit - remaining,
-    resetAt,
-    seenAt,
-  };
+  // Parallel calls answer out of order. Within one window the budget only goes
+  // down, so a late answer must not raise it again; an answer from an earlier
+  // window is stale altogether. A later window is the budget starting over.
+  const older = previous && Date.parse(resetAt) < Date.parse(previous.resetAt);
+  const raised = previous && sameWindow && remaining > previous.remaining;
+  if (!older && !raised) {
+    readings[resource] = {
+      remaining,
+      limit,
+      used: Number(headers?.get("x-ratelimit-used")) || limit - remaining,
+      resetAt,
+      seenAt,
+    };
+  }
   const raw = label.replace(/\s+/g, " ").trim();
   calls.unshift({
     at: seenAt,

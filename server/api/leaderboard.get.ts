@@ -16,13 +16,10 @@ import {
   writeReviewQueue,
 } from "../utils/review";
 
-// Keyed on the scoring-relevant config so any change to it busts the cache. The
-// resolved config is parked on the event so the handler fetches with the exact
-// config the key was built from.
-const configKey = async (event: H3Event): Promise<string> => {
-  const c = await resolveEventConfig();
-  event.context.eventConfig = c;
-  return createHash("sha256")
+// The scoring-relevant config as a short hash: any change to it busts the cache,
+// and the stored last board is only reused for the config it was computed with.
+const boardKey = (c: EventConfig): string =>
+  createHash("sha256")
     .update(
       JSON.stringify([
         c.startsAt,
@@ -37,6 +34,13 @@ const configKey = async (event: H3Event): Promise<string> => {
     )
     .digest("hex")
     .slice(0, 12);
+
+// The resolved config is parked on the event so the handler fetches with the
+// exact config the key was built from.
+const configKey = async (event: H3Event): Promise<string> => {
+  const c = await resolveEventConfig();
+  event.context.eventConfig = c;
+  return boardKey(c);
 };
 
 const LAST_BOARD_KEY = "board-last";
@@ -82,8 +86,12 @@ export default defineCachedEventHandler(
     // The last computed board stands in whenever GitHub cannot be asked: the
     // budget is nearly gone (see budgetTier), or the recompute fails. A visible
     // board a few minutes old beats an error page on the event weekend. `held`
-    // tells the page it is looking at that stored copy.
-    const last = await useStorage("state").getItem<Board>(LAST_BOARD_KEY);
+    // tells the page it is looking at that stored copy. Only a board computed
+    // with this very config qualifies: after a scope or window change the old
+    // one would show standings the current rules never produced.
+    const key = boardKey(config);
+    const stored = await useStorage("state").getItem<{ key: string; board: Board }>(LAST_BOARD_KEY);
+    const last = stored?.key === key ? stored.board : null;
     if (last && !budgetAllows("board")) {
       console.warn(`[leaderboard] ${budgetNotice()}, serving the board from ${last.fetchedAt}`);
       return { ...last, held: true };
@@ -98,16 +106,16 @@ export default defineCachedEventHandler(
     }
     const fetchedAt = new Date().toISOString();
 
-    // PR + marker closed issues. Passed to applyCredits first (so a manual credit
-    // for an already-covered issue is dropped, not double-scored), then the
-    // remaining manual issues are folded in for the headline count.
+    // Manual credits are checked against the issues somebody already scored
+    // (so one is never paid twice), then the remaining manual issues are folded
+    // into the headline count of everything closed.
     const closed = new Set(result.closedIssues);
     // Confirmed review decisions join as credits; see reviewCredits for why.
     const reviews = activeReviews(await readReviewDecisions(), result.contributions);
     const entries = applyCredits(
       result.entries,
       [...state.credits, ...reviewCredits(reviews)],
-      closed,
+      new Set(result.creditedIssues),
       {
         rules: config.scoring,
         facts: result.issueFacts,
@@ -155,7 +163,7 @@ export default defineCachedEventHandler(
     ).catch((e) => console.error("[announce] ranking post failed:", e));
 
     const board: Board = { entries, coreTeam: result.coreTeam, stats, contributions, fetchedAt };
-    await useStorage("state").setItem(LAST_BOARD_KEY, board);
+    await useStorage("state").setItem(LAST_BOARD_KEY, { key, board });
     return board;
   },
   {

@@ -7,8 +7,11 @@ const route = useRoute();
 const router = useRouter();
 
 const board = ref<IssueBoard | null>(null);
-// In the URL so a link to the list can point at a repo.
-const repo = ref(typeof route.query.repo === "string" ? route.query.repo : "nuxt/nuxt");
+// In the URL so a link to the list can point at a repo. Lowercase like the
+// server's repo list, or the dropdown would not find "Nuxt/UI".
+const repo = ref(
+  typeof route.query.repo === "string" ? route.query.repo.toLowerCase() : "nuxt/nuxt",
+);
 const busy = ref(false);
 const error = ref("");
 // Bumped whenever the watch state is about to change. A poll that started before

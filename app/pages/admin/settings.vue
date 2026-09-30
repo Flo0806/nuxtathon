@@ -581,8 +581,8 @@ const { visible } = useAdminPage(load);
           <span class="font-mono text-sm text-fg">Modules from the Nuxt registry</span>
           <span class="font-mono text-[0.72rem] leading-relaxed text-muted">
             Third-party modules listed on nuxt.com/modules, in repositories nobody here controls.
-            GitHub cannot search them all, so contributors paste their PR link on the site. A
-            maintainer's PRs to their own module do not count.
+            They are searched once an hour and every PR found goes to the review queue, so the
+            organizers decide. A maintainer's PRs to their own module do not count.
           </span>
         </label>
         <span v-if="scopeProblem" class="font-mono text-[0.72rem] text-red-400">

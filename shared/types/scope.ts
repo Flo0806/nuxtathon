@@ -6,7 +6,7 @@ export interface EventScope {
   // Organizations whose every repository counts, e.g. "nuxt-modules".
   orgs: string[];
   // Also accept PRs to modules listed in the nuxt/modules registry. Those repos
-  // cannot be searched, so contributors submit such PRs by link.
+  // are searched hourly and every PR found is reviewed by the organizers.
   registry: boolean;
 }
 

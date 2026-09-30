@@ -6,12 +6,17 @@ import type { IssueRef } from "../types/issue-ref";
 export const HOME_REPO = "nuxt/nuxt";
 
 const REPO = /^([a-z0-9-]+)\/([a-z0-9._-]+)$/i;
+// GraphQL's Int is 32-bit. A larger number would not just miss, it would fail
+// the whole batched query it is part of.
+const MAX_NUMBER = 2_147_483_647;
 
 // GitHub treats owner and repo case-insensitively, so refs are lowercased to
 // make "Nuxt/Nuxt#1" and "nuxt/nuxt#1" the same key. Links still resolve.
 export function issueRef(repo: string, number: number): IssueRef | null {
   const name = repo.trim().toLowerCase();
-  if (!REPO.test(name) || !Number.isInteger(number) || number <= 0) return null;
+  if (!REPO.test(name) || !Number.isInteger(number) || number <= 0 || number > MAX_NUMBER) {
+    return null;
+  }
   return `${name}#${number}` as IssueRef;
 }
 

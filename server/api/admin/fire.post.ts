@@ -15,16 +15,16 @@ export default defineEventHandler(async () => {
   const config = await resolveEventConfig();
   const result = await fetchLeaderboard(config, token);
 
-  // Same order as the live endpoint: dedup manual credits against PR/marker closes
-  // first, then fold the remaining manual issues into the frozen count so it
-  // matches what was on screen.
+  // Same order as the live endpoint: dedup manual credits against the issues
+  // somebody already scored, then fold the remaining manual issues into the
+  // frozen count so it matches what was on screen.
   const closed = new Set(result.closedIssues);
   // Confirmed review decisions join as credits; see reviewCredits for why.
   const reviews = activeReviews(await readReviewDecisions(), result.contributions);
   const standings = applyCredits(
     result.entries,
     [...state.credits, ...reviewCredits(reviews)],
-    closed,
+    new Set(result.creditedIssues),
     {
       rules: config.scoring,
       facts: result.issueFacts,

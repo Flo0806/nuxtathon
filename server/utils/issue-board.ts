@@ -179,15 +179,28 @@ export const fetchIssueRepos = defineCachedFunction(
     }
     const names: string[] = [];
     for (let page = 1; page <= 5; page++) {
-      const res = await $fetch.raw<RestRepo[]>(`https://api.github.com/orgs/${ISSUE_ORG}/repos`, {
-        query: { type: "public", per_page: PER_PAGE, page },
-        headers: {
-          authorization: `Bearer ${token}`,
-          accept: "application/vnd.github+json",
-          "user-agent": "nuxtathon-leaderboard",
-        },
-      });
-      recordBudget(res.headers, `repos of ${ISSUE_ORG}, page ${page}`);
+      const label = `repos of ${ISSUE_ORG}, page ${page}`;
+      const started = Date.now();
+      let res;
+      try {
+        res = await $fetch.raw<RestRepo[]>(`https://api.github.com/orgs/${ISSUE_ORG}/repos`, {
+          query: { type: "public", per_page: PER_PAGE, page },
+          headers: {
+            authorization: `Bearer ${token}`,
+            accept: "application/vnd.github+json",
+            "user-agent": "nuxtathon-leaderboard",
+          },
+        });
+      } catch (e) {
+        const err = e as { statusCode?: number; response?: { headers?: Headers } };
+        recordBudget(err.response?.headers, label, {
+          limited: err.statusCode === 403 || err.statusCode === 429,
+          status: err.statusCode,
+          ms: Date.now() - started,
+        });
+        throw e;
+      }
+      recordBudget(res.headers, label, { ms: Date.now() - started });
       const repos = res._data ?? [];
       for (const r of repos) {
         if (!r.archived && !r.fork && r.has_issues && r.open_issues_count > 0) {

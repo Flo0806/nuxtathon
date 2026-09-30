@@ -57,7 +57,7 @@ export function scopeSummary(scope: EventScope): string {
   const parts = [
     ...scope.repos,
     ...scope.orgs.map((o) => `every repository of ${o}`),
-    ...(scope.registry ? ["modules from the Nuxt registry (submitted by link)"] : []),
+    ...(scope.registry ? ["modules from the Nuxt registry (reviewed by the organizers)"] : []),
   ];
   const list =
     parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : (parts[0] ?? "");
