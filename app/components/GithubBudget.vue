@@ -24,6 +24,7 @@ interface Budget {
   readings: Partial<Record<Resource, Reading>>;
   calls: Call[];
   tier: Tier;
+  tokenRejectedAt: string;
 }
 
 // What the budget guard has switched off at each tier (server/utils/github-budget.ts).
@@ -91,6 +92,10 @@ const entries = computed(
       @click="open = !open"
     >
       <span class="i-simple-icons-github" aria-hidden="true" />
+      <span v-if="budget.tokenRejectedAt" class="font-bold text-red-400">
+        GitHub rejects the token (401) since {{ time(budget.tokenRejectedAt) }} UTC: set a valid
+        NUXT_GITHUB_TOKEN
+      </span>
       <span v-if="limitedRecently" class="font-bold text-red-400">rate limited</span>
       <span
         v-if="budget.tier !== 'full'"

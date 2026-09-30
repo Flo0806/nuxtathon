@@ -49,6 +49,7 @@ export async function restSearchPage(token: string, q: string, page: number) {
     const err = e as { statusCode?: number; response?: { headers?: Headers } };
     recordBudget(err.response?.headers, q, {
       limited: err.statusCode === 403 || err.statusCode === 429,
+      status: err.statusCode,
       ms: Date.now() - started,
     });
     throw createError({

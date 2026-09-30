@@ -249,6 +249,7 @@ async function post<T>(token: string, query: string, variables: object): Promise
     const err = e as { statusCode?: number; response?: { headers?: Headers } };
     recordBudget(err.response?.headers, label, {
       limited: err.statusCode === 403 || err.statusCode === 429,
+      status: err.statusCode,
       ms: Date.now() - started,
     });
     throw createError({

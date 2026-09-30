@@ -53,6 +53,7 @@ async function searchIssues(
     const err = e as { statusCode?: number; response?: { headers?: Headers } };
     recordBudget(err.response?.headers, q, {
       limited: err.statusCode === 403 || err.statusCode === 429,
+      status: err.statusCode,
       purpose: "random issue button",
     });
     throw createError({

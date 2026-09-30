@@ -46,13 +46,25 @@ interface CallInfo {
   purpose?: string;
   // How long GitHub took to answer.
   ms?: number;
+  // HTTP status of a failed call; 401 means the token itself was rejected.
+  status?: number;
 }
+
+// Set while GitHub rejects the token (401). Prod ran on a dead token for days
+// on 2026-09 and it only surfaced as a 502 on Flo's list; the counter says it.
+let tokenRejectedAt = "";
 
 export function recordBudget(
   headers: Headers | undefined,
   label: string,
-  { limited = false, purpose, ms }: CallInfo = {},
+  { limited = false, purpose, ms, status }: CallInfo = {},
 ): void {
+  if (status === 401) {
+    // Its rate headers describe anonymous access (60 an hour), not our budget.
+    tokenRejectedAt ||= new Date().toISOString();
+    return;
+  }
+  tokenRejectedAt = "";
   const resource = headers?.get("x-ratelimit-resource") as BudgetResource | null;
   const remaining = Number(headers?.get("x-ratelimit-remaining"));
   const limit = Number(headers?.get("x-ratelimit-limit"));
@@ -86,7 +98,7 @@ export function recordBudget(
 }
 
 export function budgetSnapshot() {
-  return { readings, calls, tier: budgetTier() };
+  return { readings, calls, tier: budgetTier(), tokenRejectedAt };
 }
 
 // The purpose of a call, from the search string or query it sent. Callers pass
