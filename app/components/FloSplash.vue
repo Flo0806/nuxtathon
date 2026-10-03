@@ -1,133 +1,128 @@
 <script setup lang="ts">
-// Intro for the issue list: the mascot lands in the middle, gives a beat, then
-// flies into the header and stays there as the page icon. One shot per mount,
-// under a second and a half, then it is furniture. Clicking it once it has
-// landed plays the whole thing again, because of course people will try.
-const landed = ref(false);
-// Keying the image on this restarts the CSS animations on replay.
-const run = ref(0);
-let timer: ReturnType<typeof setTimeout> | undefined;
+// Header icon for the issue list. It fades in around the middle of the header
+// row and rolls left into its slot; the roll is pure CSS so it already runs on
+// the server markup. Clicking it shows a larger portrait on top of the page,
+// any click elsewhere (or Escape) puts it back. Nothing else moves around.
+const open = ref(false);
+const root = ref<HTMLElement>();
 
-// `restart` swaps the element to replay the CSS animation. It stays off for the
-// first run: the markup comes from the server and is already animating, so
-// bumping the key on hydration would play the whole thing a second time.
-function play(restart = false) {
-  clearTimeout(timer);
-  if (restart) run.value++;
-  landed.value = false;
-  timer = setTimeout(() => (landed.value = true), 900);
+function onPointerDown(e: PointerEvent) {
+  if (open.value && !root.value?.contains(e.target as Node)) open.value = false;
+}
+function onKey(e: KeyboardEvent) {
+  if (e.key === "Escape") open.value = false;
 }
 
-onMounted(() => play());
-onBeforeUnmount(() => clearTimeout(timer));
+onMounted(() => {
+  document.addEventListener("pointerdown", onPointerDown);
+  document.addEventListener("keydown", onKey);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener("pointerdown", onPointerDown);
+  document.removeEventListener("keydown", onKey);
+});
 </script>
 
 <template>
-  <div class="splash" :class="{ landed }">
-    <!-- The button stays mounted so keyboard focus survives a replay; only the
-         image is keyed, which is what restarts the CSS animation. -->
-    <button type="button" class="trigger" :class="{ landed }" @click="play(true)">
-      <span class="sr-only">Play the intro again</span>
-      <img
-        :key="run"
-        src="/flo.png"
-        alt=""
-        width="512"
-        height="512"
-        class="mascot"
-        :class="{ landed }"
-        aria-hidden="true"
-      />
-    </button>
-  </div>
+  <button
+    ref="root"
+    type="button"
+    class="slot"
+    :aria-expanded="open"
+    aria-label="Enlarge the portrait"
+    @click="open = !open"
+  >
+    <img
+      src="/flo.png"
+      alt=""
+      width="512"
+      height="512"
+      class="mascot"
+      :class="{ open }"
+      aria-hidden="true"
+    />
+  </button>
 </template>
 
 <style scoped>
-/* The travelling layer: fixed and centred while flying, static once landed. */
-.splash {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-}
-.splash.landed {
-  position: static;
+/* The slot keeps the small size in the layout at all times, so enlarging the
+   portrait never pushes the title around. */
+.slot {
+  position: relative;
   display: block;
-  /* Only the landed icon is clickable; the flying one must not eat clicks. */
-  pointer-events: auto;
-}
-
-.trigger {
-  display: block;
+  flex: none;
+  width: 3.25rem;
+  height: 3.25rem;
   padding: 0;
   border: 0;
   background: none;
   line-height: 0;
-  cursor: default;
-}
-.trigger.landed {
   cursor: pointer;
 }
-.trigger:focus-visible {
+.slot:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 3px;
   border-radius: 50%;
 }
 
 .mascot {
-  /* As large as the viewport comfortably allows, capped so it stays a portrait
-     rather than a wallpaper. */
-  width: min(20rem, 62vmin);
-  height: min(20rem, 62vmin);
+  /* Start offset and spin of the roll. The spin is not derived from the
+     distance (CSS cannot divide lengths), it is picked to look roughly like
+     rolling without slipping at typical widths. */
+  --from: calc(min(50vw, 36rem) - 4rem);
+  --spin: 900deg;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 40;
+  width: 3.25rem;
+  height: 3.25rem;
+  /* The reset caps images at 100% of the containing block, which is the small
+     slot here, so the enlarged state would never grow without this. */
+  max-width: none;
   border-radius: 50%;
   border: 2px solid var(--primary);
   background: var(--surface);
   object-fit: cover;
-  box-shadow: 0 0 40px rgba(0, 220, 130, 0.35);
-  animation: pop 0.55s cubic-bezier(0.2, 1.3, 0.35, 1) both;
-}
-.mascot.landed {
-  width: 3.25rem;
-  height: 3.25rem;
   box-shadow: 0 0 14px rgba(0, 220, 130, 0.35);
-  /* The size change alone reads as the flight, because the element moves from
-     the centred overlay into the header in the same frame. */
   transition:
-    width 0.5s cubic-bezier(0.5, 0, 0.2, 1),
-    height 0.5s cubic-bezier(0.5, 0, 0.2, 1),
-    box-shadow 0.5s ease-out;
-  animation: none;
+    width 0.35s cubic-bezier(0.3, 0, 0.2, 1),
+    height 0.35s cubic-bezier(0.3, 0, 0.2, 1),
+    box-shadow 0.35s ease-out;
+  animation: roll 1.2s cubic-bezier(0.25, 0.6, 0.3, 1) both;
+}
+.mascot.open {
+  width: min(18rem, calc(100vw - 2.5rem));
+  height: min(18rem, calc(100vw - 2.5rem));
+  box-shadow: 0 0 40px rgba(0, 220, 130, 0.35);
 }
 
-@keyframes pop {
+/* Narrow screens have no meaningful middle next to the title, so the icon
+   rolls in from beyond the right edge instead. The page clips the overflow. */
+@media (max-width: 40rem) {
+  .mascot {
+    --from: 100vw;
+    --spin: 1080deg;
+  }
+}
+
+@keyframes roll {
   0% {
     opacity: 0;
-    transform: scale(0.3) rotate(-14deg);
+    transform: translateX(var(--from)) rotate(var(--spin));
   }
-  70% {
+  25% {
     opacity: 1;
-    transform: scale(1.06) rotate(3deg);
   }
   100% {
     opacity: 1;
-    transform: scale(1) rotate(0deg);
+    transform: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .splash {
-    position: static;
-    display: block;
-  }
-  .mascot,
-  .mascot.landed {
-    width: 3.25rem;
-    height: 3.25rem;
+  .mascot {
     animation: none;
-    /* Repeated for the landed state: it is more specific, so without this its
-       own transition would still animate the shadow. */
     transition: none;
   }
 }
