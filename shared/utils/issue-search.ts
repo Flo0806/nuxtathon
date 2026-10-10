@@ -29,10 +29,12 @@ export const issueSearchQuery = (
 export const scopeIssueQuery = (config: Pick<EventConfig, "qualifyingBefore" | "scope">): string =>
   openIssuesQuery(config, scopeTargets(config.scope ?? DEFAULT_SCOPE));
 
-// Human-facing link to the same set, for a "browse open issues" button.
+// Human-facing link to the same set, for a "browse open issues" button. Issues
+// with a linked pull request are filtered out here so the button only points at
+// issues still worth picking up; the board keeps them to mark "has a PR".
 export const issueSearchUrl = (config: Pick<EventConfig, "qualifyingBefore" | "scope">): string =>
   `https://github.com/search?type=issues&s=updated&o=desc&q=${encodeURIComponent(
-    scopeIssueQuery(config),
+    `${scopeIssueQuery(config)} -linked:pr`,
   )}`;
 
 // Replaces the "{issues}" placeholder with the search that matches this event's
