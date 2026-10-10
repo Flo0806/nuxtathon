@@ -4,7 +4,7 @@ import { issueRefUrl } from "#shared/utils/issue-ref";
 
 definePageMeta({ layout: "admin" });
 
-type Path = "auto" | "review" | "ignored";
+type Path = "auto" | "ignored";
 interface CheckResult {
   summary: string;
   ms: number;
@@ -25,10 +25,9 @@ interface CheckResult {
   }[];
 }
 
-// Colour and wording per path; the same three the board and review queue use.
+// Colour and wording per path, as the board uses them.
 const PATHS: { path: Path; label: string; tone: string }[] = [
   { path: "auto", label: "counts automatically", tone: "text-primary border-primary/50" },
-  { path: "review", label: "needs review", tone: "text-amber border-amber/50" },
   { path: "ignored", label: "ignored", tone: "text-faint border-line" },
 ];
 const tone = (p: Path) => PATHS.find((x) => x.path === p)!.tone;

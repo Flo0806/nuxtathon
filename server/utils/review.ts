@@ -5,27 +5,33 @@ import { budgetAllows, budgetNotice } from "./github-budget";
 import type {
   ReviewDecision,
   ReviewDecisions,
-  ReviewItem,
-  ReviewQueue,
+  SubmittedItem,
+  SubmittedList,
 } from "#shared/types/review";
 
-// The queue is rewritten from scratch by every leaderboard recompute, so it
-// always matches the board: a PR that later gets linked to a qualifying issue
-// drops out on its own. Decisions are stored apart (they must survive rewrites).
-const QUEUE_KEY = "review-queue";
+// The submitted list is rewritten from scratch by every leaderboard recompute,
+// so it always matches the board. Decisions are stored apart (they must
+// survive rewrites).
+const SUBMITTED_KEY = "submitted";
+// Held the review queue before every merged PR scored on its own.
+const LEGACY_QUEUE_KEY = "review-queue";
 
-export async function readReviewQueue(): Promise<ReviewQueue> {
+export async function readSubmitted(): Promise<SubmittedList> {
   return (
-    (await useStorage("state").getItem<ReviewQueue>(QUEUE_KEY)) ?? { updatedAt: "", items: [] }
+    (await useStorage("state").getItem<SubmittedList>(SUBMITTED_KEY)) ?? {
+      updatedAt: "",
+      items: [],
+    }
   );
 }
 
-export async function writeReviewQueue(items: ReviewItem[], updatedAt: string): Promise<void> {
-  await useStorage("state").setItem(QUEUE_KEY, { updatedAt, items });
+export async function writeSubmitted(items: SubmittedItem[], updatedAt: string): Promise<void> {
+  await useStorage("state").setItem(SUBMITTED_KEY, { updatedAt, items });
 }
 
-export async function clearReviewQueue(): Promise<void> {
-  await useStorage("state").removeItem(QUEUE_KEY);
+export async function clearSubmitted(): Promise<void> {
+  await useStorage("state").removeItem(SUBMITTED_KEY);
+  await useStorage("state").removeItem(LEGACY_QUEUE_KEY);
 }
 
 const DECISIONS_KEY = "review-decisions";
@@ -49,6 +55,13 @@ export function withReviewLock<T>(task: () => Promise<T>): Promise<T> {
   chain = run.catch(() => undefined);
   return run;
 }
+
+export const vetoedRefs = (decisions: ReviewDecisions): Set<IssueRef> =>
+  new Set(
+    Object.values(decisions)
+      .filter((d) => d.status === "rejected")
+      .map((d) => d.ref),
+  );
 
 // Confirmed decisions that still apply. A PR that meanwhile scores on its own
 // (someone linked a qualifying issue to it) is left out, so it never counts twice.

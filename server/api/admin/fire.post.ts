@@ -7,6 +7,7 @@ import {
   readRegistryPrs,
   readReviewDecisions,
   reviewCredits,
+  vetoedRefs,
 } from "~~/server/utils/review";
 
 // Freeze the ranking, release prizes, and archive the result in one shot.
@@ -20,14 +21,18 @@ export default defineEventHandler(async () => {
   const config = await resolveEventConfig();
   // The stored registry scan, up to an hour old; "Search now" on the review
   // page refreshes it before firing.
-  const result = await fetchLeaderboard(config, token, undefined, await readRegistryPrs());
+  const decisions = await readReviewDecisions();
+  const result = await fetchLeaderboard(config, token, undefined, {
+    registryPrs: await readRegistryPrs(),
+    vetoed: vetoedRefs(decisions),
+  });
 
   // Same order as the live endpoint: dedup manual credits against the issues
   // somebody already scored, then fold the remaining manual issues into the
   // frozen count so it matches what was on screen.
   const closed = new Set(result.closedIssues);
   // Confirmed review decisions join as credits; see reviewCredits for why.
-  const reviews = activeReviews(await readReviewDecisions(), result.contributions);
+  const reviews = activeReviews(decisions, result.contributions);
   const standings = applyCredits(
     result.entries,
     [...state.credits, ...reviewCredits(reviews)],

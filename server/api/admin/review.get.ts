@@ -1,34 +1,28 @@
-import type { ReviewItem } from "#shared/types/review";
 import {
   readRegistryScan,
   readReviewDecisions,
-  readReviewQueue,
+  readSubmitted,
   registryScanStatus,
 } from "../../utils/review";
 
-// The open queue (scope PRs from the last leaderboard recompute, minus what was
-// already decided), the decisions, and the state of the registry search, whose
-// PRs score on the board directly.
+// A decision whose PR left the list (the window changed) is still returned, so
+// it can be undone.
 export default defineEventHandler(async () => {
-  const [queue, registry, decisions] = await Promise.all([
-    readReviewQueue(),
+  const [submitted, registry, decisions] = await Promise.all([
+    readSubmitted(),
     readRegistryScan(),
     readReviewDecisions(),
   ]);
-  const byRef = new Map<string, ReviewItem>();
-  for (const item of queue.items) byRef.set(item.ref, item);
   return {
-    updatedAt: queue.updatedAt,
+    updatedAt: submitted.updatedAt,
     registry: {
       updatedAt: registry.updatedAt,
       repos: registry.repos,
       searches: registry.searches,
       ...registryScanStatus(),
     },
-    open: [...byRef.values()]
-      .filter((i) => !decisions[i.ref])
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    decided: Object.values(decisions).sort((a, b) => b.decidedAt.localeCompare(a.decidedAt)),
+    items: submitted.items,
+    decisions,
     frozen: Boolean((await readRuntimeState()).final),
   };
 });
