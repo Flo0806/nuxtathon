@@ -451,12 +451,14 @@ async function searchPrsAcross(
 
 // Which way a PR counts. Shared by the admin check, the board and the review
 // queue, so what the check shows is what the board will do.
-//   auto:    closes at least one issue created before the cutoff; scored as in #1
-//   review:  in scope but closes nothing that qualifies, or opened by the
-//            maintainers of that very repo; an organizer decides
-//   ignored: nobody left to credit once bots are dropped, or core team only
-//            without a qualifying issue (core team is acknowledged on the board,
-//            never reviewed for points)
+//   auto:    every merged PR with a community contributor left to credit, with
+//            or without a qualifying issue (decided for #2: a merged PR is the
+//            maintainer's verdict, docs included)
+//   ignored: bots, core team only without a qualifying issue (core team is
+//            acknowledged on its own list, never reviewed for points), or only
+//            the maintainers of that very repo
+// "review" is no longer produced; it stays in the type until the review queue
+// is replaced by the submitted list.
 export type PrPath = "auto" | "review" | "ignored";
 
 export interface ClassifiedPr {
@@ -517,13 +519,15 @@ export function classifyPr(
   const base = { qualifying, closes, contributors, maintainers };
 
   if (contributors.every(isCore)) {
-    return { ...base, path: "review", reason: "maintainer of this repository" };
+    return { ...base, path: "ignored", reason: "maintainer of this repository" };
   }
   if (n > 0) return { ...base, path: "auto", reason: closesText };
   return {
     ...base,
-    path: "review",
-    reason: closes.length ? "closes only issues from after the cutoff" : "closes no issue",
+    path: "auto",
+    reason: closes.length
+      ? "merged, its issues are from after the cutoff"
+      : "merged, closes no issue",
   };
 }
 
@@ -1079,7 +1083,10 @@ export async function fetchLeaderboard(
   // query that already selected its reactions, so this costs nothing extra.
   let upvotes = 0;
   for (const ref of closedInWindow) upvotes += issueFacts[ref]?.upvotes ?? 0;
-  const merged = prs.filter((pr) => isHuman(pr.author)).length;
+  // Only PRs that earned a community contributor points. Core team, bot and
+  // self-maintained PRs are merged too, but counting them made the headline
+  // promise points the board never showed.
+  const merged = new Set([...byLogin.values()].flatMap((t) => [...t.prs])).size;
   // Every PR opened in the window across the scope, merged or not. The searches
   // never overlap (scopeSearches drops repos inside listed orgs), so the counts
   // add up without double counting.
