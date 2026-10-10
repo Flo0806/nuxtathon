@@ -10,6 +10,7 @@ import { budgetAllows, budgetNotice } from "../utils/github-budget";
 import { announceRankingIfChanged } from "../utils/announce";
 import {
   activeReviews,
+  readRegistryPrs,
   readReviewDecisions,
   reviewCredits,
   scanRegistry,
@@ -98,7 +99,7 @@ export default defineCachedEventHandler(
     }
     let result: Awaited<ReturnType<typeof fetchLeaderboard>>;
     try {
-      result = await fetchLeaderboard(config, token);
+      result = await fetchLeaderboard(config, token, undefined, await readRegistryPrs());
     } catch (e) {
       if (!last) throw e;
       console.error("[leaderboard] recompute failed, serving the last board:", e);

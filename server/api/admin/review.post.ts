@@ -2,7 +2,6 @@ import type { IssueRef } from "#shared/types/issue-ref";
 import type { ReviewDecision } from "#shared/types/review";
 import { parseIssueRef } from "#shared/utils/issue-ref";
 import {
-  readRegistryQueue,
   readReviewDecisions,
   readReviewQueue,
   withReviewLock,
@@ -41,12 +40,7 @@ export default defineEventHandler(async (event) => {
 
   return withReviewLock(async () => {
     const decisions = await readReviewDecisions();
-    const queue = new Map(
-      [...(await readReviewQueue()).items, ...(await readRegistryQueue()).items].map((i) => [
-        i.ref,
-        i,
-      ]),
-    );
+    const queue = new Map((await readReviewQueue()).items.map((i) => [i.ref, i]));
     const decidedAt = new Date().toISOString();
     for (const ref of refs as IssueRef[]) {
       if (status === "open") {

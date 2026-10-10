@@ -1,5 +1,5 @@
 import type { EventSettings } from "#shared/types/event";
-import { clearRegistryQueue, clearReviewDecisions, clearReviewQueue } from "../../utils/review";
+import { clearRegistryScan, clearReviewDecisions, clearReviewQueue } from "../../utils/review";
 
 // Archive the fired event, clear live state, write the new window to settings.
 // Existing content overrides are kept.
@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
   await clearSnapshots();
   await clearReviewQueue();
   await clearReviewDecisions();
-  await clearRegistryQueue();
+  await clearRegistryScan();
   // The last board belongs to the old event; it must never stand in for the new one.
   await useStorage("state").removeItem("board-last");
   await clearAnnounceState();

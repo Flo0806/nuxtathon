@@ -1,22 +1,22 @@
 import type { ReviewItem } from "#shared/types/review";
 import {
-  readRegistryQueue,
+  readRegistryScan,
   readReviewDecisions,
   readReviewQueue,
   registryScanStatus,
 } from "../../utils/review";
 
-// The open queue (scope PRs from the last leaderboard recompute plus registry
-// PRs from the last registry search, minus what was already decided) and the
-// decisions.
+// The open queue (scope PRs from the last leaderboard recompute, minus what was
+// already decided), the decisions, and the state of the registry search, whose
+// PRs score on the board directly.
 export default defineEventHandler(async () => {
   const [queue, registry, decisions] = await Promise.all([
     readReviewQueue(),
-    readRegistryQueue(),
+    readRegistryScan(),
     readReviewDecisions(),
   ]);
   const byRef = new Map<string, ReviewItem>();
-  for (const item of [...queue.items, ...registry.items]) byRef.set(item.ref, item);
+  for (const item of queue.items) byRef.set(item.ref, item);
   return {
     updatedAt: queue.updatedAt,
     registry: {

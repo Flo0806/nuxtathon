@@ -35,7 +35,7 @@ interface IssueRefNode {
   reactions?: { totalCount: number };
 }
 
-interface PrNode {
+export interface PrNode {
   number: number;
   title?: string;
   files?: { totalCount: number; nodes: { path: string }[] };
@@ -563,9 +563,8 @@ function toReviewItem(
 // search per recompute, so they are searched in packs: several `repo:`
 // qualifiers in one query act as OR (measured: the combined count equals the
 // per-repo sum), and GitHub caps a query at 256 characters, which fits ~7 repos.
-// 270 foreign repos take ~40 searches. Every hit goes to review, even one that
-// closes a qualifying issue: these repos are nobody's here and only searched
-// hourly, so nothing from them scores without an organizer.
+// 270 foreign repos take ~40 searches. The hits are stored and scored by the
+// board like any scope PR, so a module PR shows up within the hour.
 const MAX_QUERY_LENGTH = 256;
 // ~55 searches then take about two minutes instead of thirty seconds. It runs in
 // the background, so nobody waits for it.
@@ -598,12 +597,12 @@ function touchesModule(pr: PrNode, paths: Map<string, string>): boolean {
   return pr.files.totalCount > pr.files.nodes.length;
 }
 
-export async function fetchRegistryReview(
+export async function fetchRegistryPrs(
   token: string,
-  config: Pick<EventConfig, "scope" | "qualifyingBefore" | "coreTeam" | "scoring">,
+  config: Pick<EventConfig, "scope">,
   from: string,
   to: string,
-): Promise<{ items: ReviewItem[]; repos: number; searches: number }> {
+): Promise<{ prs: PrNode[]; repos: number; searches: number }> {
   const registry = await registryMaintainers();
   if (!registry.ok) {
     throw createError({ statusCode: 502, statusMessage: "The module registry did not answer" });
@@ -624,35 +623,12 @@ export async function fetchRegistryReview(
     await searchPrsAcross(token, wholeSearches, SEARCH_QUERY_SMALL, REGISTRY_PAUSE_MS),
     await searchPrsAcross(token, monoSearches, SEARCH_QUERY_WITH_FILES, REGISTRY_PAUSE_MS),
   ];
-  const prs = [...wholePrs, ...monoPrs.filter((pr) => touchesModule(pr, registry.paths))];
-  const searches = [...wholeSearches, ...monoSearches];
-
-  const cutoff = Date.parse(config.qualifyingBefore);
-  const core = new Set(config.coreTeam.map((l) => l.toLowerCase()));
-  const issuePoints = config.scoring.issuePoints.enabled ? config.scoring.issuePoints.points : 1;
-  const items: ReviewItem[] = [];
-  for (const pr of prs) {
-    const ref = refOf(pr);
-    if (!ref) continue;
-    const verdict = classifyPr(pr, cutoff, core, registry.byRepo);
-    if (verdict.path === "ignored") continue;
-    // Core team with a qualifying issue would score automatically in scope;
-    // here there is no automatic path, and core team is never reviewed.
-    if (verdict.path === "auto" && verdict.contributors.every((l) => core.has(l.toLowerCase()))) {
-      continue;
-    }
-    const item = toReviewItem(pr, ref, verdict, config.scoring, core);
-    items.push({
-      ...item,
-      reason: `registry module, ${verdict.reason}`,
-      suggested: item.suggested + verdict.qualifying.length * issuePoints,
-    });
-  }
-  return {
-    items: items.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    repos: repos.length,
-    searches: searches.length,
-  };
+  // The file lists only serve the folder filter; dropped so the stored copy stays small.
+  const prs = [
+    ...wholePrs,
+    ...monoPrs.filter((pr) => touchesModule(pr, registry.paths)).map(({ files: _f, ...pr }) => pr),
+  ];
+  return { prs, repos: repos.length, searches: wholeSearches.length + monoSearches.length };
 }
 
 // Admin debug view: what the scope finds for a window and which way each PR
@@ -908,6 +884,9 @@ export async function fetchLeaderboard(
   config: EventConfig,
   token: string,
   window?: { from?: string; to?: string },
+  // Merged PRs from the last registry scan (see fetchRegistryPrs), scored with
+  // exactly the same rules as the scope PRs.
+  registryPrs: PrNode[] = [],
 ): Promise<{
   entries: LeaderboardEntry[];
   coreTeam: LeaderboardEntry[];
@@ -961,7 +940,11 @@ export async function fetchLeaderboard(
   ]);
   // A PR can only turn up once per search, and searches do not overlap, but a
   // map keeps that an invariant rather than an assumption.
-  const prs = [...new Map(found.flatMap((f) => f.prs).map((pr) => [refOf(pr), pr])).values()];
+  const prs = [
+    ...new Map(
+      [...found.flatMap((f) => f.prs), ...registryPrs].map((pr) => [refOf(pr), pr]),
+    ).values(),
+  ];
 
   const byLogin = new Map<string, Tally>();
   const coreByLogin = new Map<string, Tally>();
