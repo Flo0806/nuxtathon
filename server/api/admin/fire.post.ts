@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 import type { Award, FinalResult } from "#shared/types/event";
 import { isDefaultScoring, scoreUnit } from "#shared/utils/scoring";
 import { announceFinal } from "~~/server/utils/announce";
-import { activeReviews, readReviewDecisions, reviewCredits } from "~~/server/utils/review";
+import {
+  activeReviews,
+  readRegistryPrs,
+  readReviewDecisions,
+  reviewCredits,
+  vetoedRefs,
+} from "~~/server/utils/review";
 
 // Freeze the ranking, release prizes, and archive the result in one shot.
 export default defineEventHandler(async () => {
@@ -13,14 +19,20 @@ export default defineEventHandler(async () => {
 
   const state = await readRuntimeState();
   const config = await resolveEventConfig();
-  const result = await fetchLeaderboard(config, token);
+  // The stored registry scan, up to an hour old; "Search now" on the review
+  // page refreshes it before firing.
+  const decisions = await readReviewDecisions();
+  const result = await fetchLeaderboard(config, token, undefined, {
+    registryPrs: await readRegistryPrs(),
+    vetoed: vetoedRefs(decisions),
+  });
 
   // Same order as the live endpoint: dedup manual credits against the issues
   // somebody already scored, then fold the remaining manual issues into the
   // frozen count so it matches what was on screen.
   const closed = new Set(result.closedIssues);
   // Confirmed review decisions join as credits; see reviewCredits for why.
-  const reviews = activeReviews(await readReviewDecisions(), result.contributions);
+  const reviews = activeReviews(decisions, result.contributions);
   const standings = applyCredits(
     result.entries,
     [...state.credits, ...reviewCredits(reviews)],

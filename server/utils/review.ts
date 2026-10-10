@@ -1,31 +1,37 @@
 import type { ContributionIds, EventConfig, ManualCredit } from "#shared/types/event";
 import type { IssueRef } from "#shared/types/issue-ref";
-import { fetchRegistryReview } from "./github";
+import { fetchRegistryPrs, type PrNode } from "./github";
 import { budgetAllows, budgetNotice } from "./github-budget";
 import type {
   ReviewDecision,
   ReviewDecisions,
-  ReviewItem,
-  ReviewQueue,
+  SubmittedItem,
+  SubmittedList,
 } from "#shared/types/review";
 
-// The queue is rewritten from scratch by every leaderboard recompute, so it
-// always matches the board: a PR that later gets linked to a qualifying issue
-// drops out on its own. Decisions are stored apart (they must survive rewrites).
-const QUEUE_KEY = "review-queue";
+// The submitted list is rewritten from scratch by every leaderboard recompute,
+// so it always matches the board. Decisions are stored apart (they must
+// survive rewrites).
+const SUBMITTED_KEY = "submitted";
+// Held the review queue before every merged PR scored on its own.
+const LEGACY_QUEUE_KEY = "review-queue";
 
-export async function readReviewQueue(): Promise<ReviewQueue> {
+export async function readSubmitted(): Promise<SubmittedList> {
   return (
-    (await useStorage("state").getItem<ReviewQueue>(QUEUE_KEY)) ?? { updatedAt: "", items: [] }
+    (await useStorage("state").getItem<SubmittedList>(SUBMITTED_KEY)) ?? {
+      updatedAt: "",
+      items: [],
+    }
   );
 }
 
-export async function writeReviewQueue(items: ReviewItem[], updatedAt: string): Promise<void> {
-  await useStorage("state").setItem(QUEUE_KEY, { updatedAt, items });
+export async function writeSubmitted(items: SubmittedItem[], updatedAt: string): Promise<void> {
+  await useStorage("state").setItem(SUBMITTED_KEY, { updatedAt, items });
 }
 
-export async function clearReviewQueue(): Promise<void> {
-  await useStorage("state").removeItem(QUEUE_KEY);
+export async function clearSubmitted(): Promise<void> {
+  await useStorage("state").removeItem(SUBMITTED_KEY);
+  await useStorage("state").removeItem(LEGACY_QUEUE_KEY);
 }
 
 const DECISIONS_KEY = "review-decisions";
@@ -50,6 +56,13 @@ export function withReviewLock<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 
+export const vetoedRefs = (decisions: ReviewDecisions): Set<IssueRef> =>
+  new Set(
+    Object.values(decisions)
+      .filter((d) => d.status === "rejected")
+      .map((d) => d.ref),
+  );
+
 // Confirmed decisions that still apply. A PR that meanwhile scores on its own
 // (someone linked a qualifying issue to it) is left out, so it never counts twice.
 export function activeReviews(
@@ -68,34 +81,40 @@ export const reviewCredits = (reviews: ReviewDecision[]): ManualCredit[] =>
     d.people.map((login) => ({ login, amount: d.points, note: `reviewed ${d.ref}` })),
   );
 
-// Registry modules are searched on their own clock (see fetchRegistryReview) and
-// stored apart from the scope queue, which every leaderboard recompute rewrites.
+// Registry modules are searched on their own clock (see fetchRegistryPrs); the
+// board reads the stored PRs on every recompute.
 const REGISTRY_KEY = "review-queue-registry";
 const REGISTRY_EVERY_MS = 60 * 60 * 1000;
 // "Search now" in the admin: generous for a person, cheap for the budget.
 const REGISTRY_MANUAL_MS = 10 * 60 * 1000;
 
-export interface RegistryQueue extends ReviewQueue {
+export interface RegistryScan {
+  updatedAt: string;
+  // Absent in scans stored before module PRs scored automatically (they held
+  // review items then); such a scan counts as due, see scanRegistry.
+  prs?: PrNode[];
   repos: number;
   searches: number;
 }
 
-export async function readRegistryQueue(): Promise<RegistryQueue> {
+export async function readRegistryScan(): Promise<RegistryScan> {
   return (
-    (await useStorage("state").getItem<RegistryQueue>(REGISTRY_KEY)) ?? {
+    (await useStorage("state").getItem<RegistryScan>(REGISTRY_KEY)) ?? {
       updatedAt: "",
-      items: [],
+      prs: [],
       repos: 0,
       searches: 0,
     }
   );
 }
 
-export async function clearRegistryQueue(): Promise<void> {
+export const readRegistryPrs = async (): Promise<PrNode[]> => (await readRegistryScan()).prs ?? [];
+
+export async function clearRegistryScan(): Promise<void> {
   await useStorage("state").removeItem(REGISTRY_KEY);
 }
 
-let scanning: Promise<RegistryQueue> | null = null;
+let scanning: Promise<RegistryScan> | null = null;
 // Every attempt counts toward the interval, failed ones too: when GitHub refuses
 // (budget used up), retrying on the next five-minute recompute would only keep
 // the account blocked. Kept in memory; a restart simply allows one try.
@@ -120,11 +139,14 @@ export async function scanRegistry(
   token: string,
   config: EventConfig,
   manual = false,
-): Promise<{ started: boolean; done: Promise<RegistryQueue> }> {
+): Promise<{ started: boolean; done: Promise<RegistryScan> }> {
   if (scanning) return { started: true, done: scanning };
-  const current = await readRegistryQueue();
+  const current = await readRegistryScan();
   const now = Date.now();
-  const last = Math.max(lastAttemptAt, current.updatedAt ? Date.parse(current.updatedAt) : 0);
+  // A scan in the old shape carries no PRs; waiting out its hour would hide
+  // every module PR from the board until then.
+  const stored = current.prs && current.updatedAt ? Date.parse(current.updatedAt) : 0;
+  const last = Math.max(lastAttemptAt, stored);
   const due =
     config.scope.registry &&
     now >= Date.parse(config.startsAt) &&
@@ -141,13 +163,13 @@ export async function scanRegistry(
   scanning ??= (async () => {
     try {
       const updatedAt = new Date().toISOString();
-      const result = await fetchRegistryReview(
+      const result = await fetchRegistryPrs(
         token,
         config,
         config.startsAt,
         new Date(Math.min(now, Date.parse(config.endsAt))).toISOString(),
       );
-      const next: RegistryQueue = { updatedAt, ...result };
+      const next: RegistryScan = { updatedAt, ...result };
       await useStorage("state").setItem(REGISTRY_KEY, next);
       lastError = "";
       return next;

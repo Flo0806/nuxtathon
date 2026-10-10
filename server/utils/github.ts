@@ -6,9 +6,8 @@ import type {
 } from "#shared/types/event";
 import type { IssueRef } from "#shared/types/issue-ref";
 import type { EventScope } from "#shared/types/scope";
-import type { ReviewItem } from "#shared/types/review";
-import { V5_LABEL } from "#shared/types/review";
-import type { IssueFacts, IssueFactsMap, ScoringRules } from "#shared/types/scoring";
+import type { SubmittedItem } from "#shared/types/review";
+import type { IssueFacts, IssueFactsMap } from "#shared/types/scoring";
 import { HOME_REPO, issueRef, splitIssueRef } from "#shared/utils/issue-ref";
 import { scopeTargets } from "#shared/utils/scope";
 import { recordBudget } from "./github-budget";
@@ -35,13 +34,14 @@ interface IssueRefNode {
   reactions?: { totalCount: number };
 }
 
-interface PrNode {
+export interface PrNode {
   number: number;
   title?: string;
   files?: { totalCount: number; nodes: { path: string }[] };
   repository?: { nameWithOwner: string };
   createdAt: string;
-  mergedAt: string;
+  mergedAt: string | null;
+  state?: SubmittedPr["state"];
   labels?: { nodes: { name: string }[] };
   author: PrAuthor | null;
   closingIssuesReferences: { nodes: IssueRefNode[] };
@@ -69,9 +69,21 @@ interface SearchPage {
   nodes: PrNode[];
 }
 
-interface AuthorPage {
+// The few fields the submitted list needs; no commits or closing issues, so a
+// page of 100 costs about one point.
+interface SubmittedPr {
+  number: number;
+  title: string;
+  repository: { nameWithOwner: string };
+  createdAt: string;
+  mergedAt: string | null;
+  state: "OPEN" | "CLOSED" | "MERGED";
+  author: { __typename: string; login: string } | null;
+}
+
+interface SubmittedPage {
   pageInfo: { endCursor: string | null; hasNextPage: boolean };
-  nodes: { author: { __typename: string } | null }[];
+  nodes: SubmittedPr[];
 }
 
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
@@ -96,6 +108,7 @@ const PR_FIELDS = `
           }
           createdAt
           mergedAt
+          state
           labels(first: 20) {
             nodes {
               name
@@ -184,7 +197,7 @@ const SEARCH_QUERY_WITH_FILES = searchQuery(
   `... on PullRequest { files(first: 100) { totalCount nodes { path } } }`,
 );
 
-const AUTHOR_QUERY = `
+const SUBMITTED_QUERY = `
   query ($search: String!, $after: String) {
     search(query: $search, type: ISSUE, first: 100, after: $after) {
       pageInfo {
@@ -193,8 +206,17 @@ const AUTHOR_QUERY = `
       }
       nodes {
         ... on PullRequest {
+          number
+          title
+          repository {
+            nameWithOwner
+          }
+          createdAt
+          mergedAt
+          state
           author {
             __typename
+            login
           }
         }
       }
@@ -449,15 +471,16 @@ async function searchPrsAcross(
   return { prs: [...byRef.values()], counts };
 }
 
-// Which way a PR counts. Shared by the admin check, the board and the review
-// queue, so what the check shows is what the board will do.
-//   auto:    closes at least one issue created before the cutoff; scored as in #1
-//   review:  in scope but closes nothing that qualifies, or opened by the
-//            maintainers of that very repo; an organizer decides
-//   ignored: nobody left to credit once bots are dropped, or core team only
-//            without a qualifying issue (core team is acknowledged on the board,
-//            never reviewed for points)
-export type PrPath = "auto" | "review" | "ignored";
+// Which way a merged PR counts. Shared by the admin check, the board and the
+// submitted list, so what the check shows is what the board will do.
+//   auto:    every merged PR with a community contributor left to credit, with
+//            or without a qualifying issue (decided for #2: a merged PR is the
+//            maintainer's verdict, docs included)
+//   ignored: bots, core team only without a qualifying issue (core team is
+//            acknowledged on its own list, never reviewed for points), or only
+//            the maintainers of that very repo
+// Organizers can still veto an auto PR or credit an open one (ReviewDecision).
+export type PrPath = "auto" | "ignored";
 
 export interface ClassifiedPr {
   path: PrPath;
@@ -499,7 +522,7 @@ export function classifyPr(
   }
 
   // Core team first: Daniel maintains many modules himself, and his PRs must
-  // neither land in his own review queue nor be reported as self-maintained.
+  // not be reported as self-maintained.
   const isCore = (l: string) => coreTeam.has(l.toLowerCase());
   if (humans.every(isCore)) {
     const base = { qualifying, closes, contributors: humans, maintainers: [] };
@@ -517,41 +540,15 @@ export function classifyPr(
   const base = { qualifying, closes, contributors, maintainers };
 
   if (contributors.every(isCore)) {
-    return { ...base, path: "review", reason: "maintainer of this repository" };
+    return { ...base, path: "ignored", reason: "maintainer of this repository" };
   }
   if (n > 0) return { ...base, path: "auto", reason: closesText };
   return {
     ...base,
-    path: "review",
-    reason: closes.length ? "closes only issues from after the cutoff" : "closes no issue",
-  };
-}
-
-// Who would get the points if an organizer confirms: the non-core contributors,
-// or, when the maintainers opened it alone, the maintainers themselves (that is
-// exactly the case the organizer is asked about).
-function toReviewItem(
-  pr: PrNode,
-  ref: IssueRef,
-  verdict: ClassifiedPr,
-  rules: ScoringRules,
-  coreTeam: Set<string>,
-): ReviewItem {
-  const community = verdict.contributors.filter((l) => !coreTeam.has(l.toLowerCase()));
-  const labels = (pr.labels?.nodes ?? []).map((l) => l.name);
-  const base = rules.prPoints.enabled ? rules.prPoints.points : 1;
-  const v5 = labels.some((l) => l.toLowerCase() === V5_LABEL);
-  return {
-    ref,
-    title: pr.title ?? "",
-    author: pr.author?.login ?? "ghost",
-    people: community.length ? community : verdict.maintainers,
-    reason: verdict.reason,
-    maintainers: verdict.maintainers,
-    labels,
-    createdAt: pr.createdAt,
-    mergedAt: pr.mergedAt,
-    suggested: v5 ? base * 2 : base,
+    path: "auto",
+    reason: closes.length
+      ? "merged, its issues are from after the cutoff"
+      : "merged, closes no issue",
   };
 }
 
@@ -559,9 +556,9 @@ function toReviewItem(
 // search per recompute, so they are searched in packs: several `repo:`
 // qualifiers in one query act as OR (measured: the combined count equals the
 // per-repo sum), and GitHub caps a query at 256 characters, which fits ~7 repos.
-// 270 foreign repos take ~40 searches. Every hit goes to review, even one that
-// closes a qualifying issue: these repos are nobody's here and only searched
-// hourly, so nothing from them scores without an organizer.
+// 270 foreign repos take ~40 searches. Every state is fetched: the board scores
+// the merged ones like any scope PR (so a module PR shows up within the hour),
+// the open and closed ones only go to the submitted list.
 const MAX_QUERY_LENGTH = 256;
 // ~55 searches then take about two minutes instead of thirty seconds. It runs in
 // the background, so nobody waits for it.
@@ -594,12 +591,12 @@ function touchesModule(pr: PrNode, paths: Map<string, string>): boolean {
   return pr.files.totalCount > pr.files.nodes.length;
 }
 
-export async function fetchRegistryReview(
+export async function fetchRegistryPrs(
   token: string,
-  config: Pick<EventConfig, "scope" | "qualifyingBefore" | "coreTeam" | "scoring">,
+  config: Pick<EventConfig, "scope">,
   from: string,
   to: string,
-): Promise<{ items: ReviewItem[]; repos: number; searches: number }> {
+): Promise<{ prs: PrNode[]; repos: number; searches: number }> {
   const registry = await registryMaintainers();
   if (!registry.ok) {
     throw createError({ statusCode: 502, statusMessage: "The module registry did not answer" });
@@ -609,7 +606,7 @@ export async function fetchRegistryReview(
   const repos = [...registry.byRepo.keys()].filter(
     (r) => !orgs.has(r.slice(0, r.indexOf("/"))) && !listed.has(r),
   );
-  const qualifiers = `is:pr is:merged created:${toGithubStamp(from)}..${toGithubStamp(to)}`;
+  const qualifiers = `is:pr created:${toGithubStamp(from)}..${toGithubStamp(to)}`;
   // Monorepos (the registry names a folder) are searched with file lists;
   // everything else is the module, so the lighter query does.
   const mono = repos.filter((r) => registry.paths.has(r));
@@ -620,35 +617,12 @@ export async function fetchRegistryReview(
     await searchPrsAcross(token, wholeSearches, SEARCH_QUERY_SMALL, REGISTRY_PAUSE_MS),
     await searchPrsAcross(token, monoSearches, SEARCH_QUERY_WITH_FILES, REGISTRY_PAUSE_MS),
   ];
-  const prs = [...wholePrs, ...monoPrs.filter((pr) => touchesModule(pr, registry.paths))];
-  const searches = [...wholeSearches, ...monoSearches];
-
-  const cutoff = Date.parse(config.qualifyingBefore);
-  const core = new Set(config.coreTeam.map((l) => l.toLowerCase()));
-  const issuePoints = config.scoring.issuePoints.enabled ? config.scoring.issuePoints.points : 1;
-  const items: ReviewItem[] = [];
-  for (const pr of prs) {
-    const ref = refOf(pr);
-    if (!ref) continue;
-    const verdict = classifyPr(pr, cutoff, core, registry.byRepo);
-    if (verdict.path === "ignored") continue;
-    // Core team with a qualifying issue would score automatically in scope;
-    // here there is no automatic path, and core team is never reviewed.
-    if (verdict.path === "auto" && verdict.contributors.every((l) => core.has(l.toLowerCase()))) {
-      continue;
-    }
-    const item = toReviewItem(pr, ref, verdict, config.scoring, core);
-    items.push({
-      ...item,
-      reason: `registry module, ${verdict.reason}`,
-      suggested: item.suggested + verdict.qualifying.length * issuePoints,
-    });
-  }
-  return {
-    items: items.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    repos: repos.length,
-    searches: searches.length,
-  };
+  // The file lists only serve the folder filter; dropped so the stored copy stays small.
+  const prs = [
+    ...wholePrs,
+    ...monoPrs.filter((pr) => touchesModule(pr, registry.paths)).map(({ files: _f, ...pr }) => pr),
+  ];
+  return { prs, repos: repos.length, searches: wholeSearches.length + monoSearches.length };
 }
 
 // Admin debug view: what the scope finds for a window and which way each PR
@@ -678,7 +652,7 @@ export async function scopeCheck(
         ref: refOf(pr)!,
         author: pr.author?.login ?? "ghost",
         createdAt: pr.createdAt,
-        mergedAt: pr.mergedAt,
+        mergedAt: pr.mergedAt ?? "",
         labels: (pr.labels?.nodes ?? []).map((l) => l.name),
         ...classifyPr(pr, cutoff, core, registry.byRepo),
       }))
@@ -686,20 +660,20 @@ export async function scopeCheck(
   };
 }
 
-// Human-authored PR count for a search, excluding bots (renovate, dependabot).
-async function countHumanPrs(token: string, search: string): Promise<number> {
+// Human-authored PRs of a search, excluding bots (renovate, dependabot).
+async function listSubmitted(token: string, search: string): Promise<SubmittedPr[]> {
   let after: string | null = null;
-  let count = 0;
+  const out: SubmittedPr[] = [];
 
   for (let page = 0; page < MAX_PAGES; page++) {
-    const { search: result } = (await graphql(token, AUTHOR_QUERY, { search, after })) as {
-      search: AuthorPage;
+    const { search: result } = (await graphql(token, SUBMITTED_QUERY, { search, after })) as {
+      search: SubmittedPage;
     };
-    count += result.nodes.filter((node) => isHuman(node.author)).length;
+    out.push(...result.nodes.filter((node) => isHuman(node.author)));
     if (!result.pageInfo.hasNextPage) break;
     after = result.pageInfo.endCursor;
   }
-  return count;
+  return out;
 }
 
 function escapeRegExp(s: string): string {
@@ -898,12 +872,16 @@ function rank(entries: LeaderboardEntry[]): LeaderboardEntry[] {
 }
 
 // Ranking plus window-wide activity counters. Core team members are collected
-// separately (acknowledged, not competing for prizes); bots and issue-less PRs
-// score nothing.
+// separately (acknowledged, not competing for prizes); bots, self-maintained and
+// vetoed PRs score nothing.
 export async function fetchLeaderboard(
   config: EventConfig,
   token: string,
   window?: { from?: string; to?: string },
+  inputs: {
+    registryPrs?: PrNode[];
+    vetoed?: ReadonlySet<IssueRef>;
+  } = {},
 ): Promise<{
   entries: LeaderboardEntry[];
   coreTeam: LeaderboardEntry[];
@@ -918,9 +896,9 @@ export async function fetchLeaderboard(
   contributions: ContributionIds;
   // Age, labels and upvotes of every closed issue, for weighted scoring.
   issueFacts: IssueFactsMap;
-  // In-scope PRs that need an organizer's decision.
-  review: ReviewItem[];
+  submitted: SubmittedItem[];
 }> {
+  const { registryPrs = [], vetoed = new Set<IssueRef>() } = inputs;
   const from = window?.from ?? config.startsAt;
   const to = window?.to ?? config.endsAt;
   const cutoff = Date.parse(config.qualifyingBefore);
@@ -943,9 +921,9 @@ export async function fetchLeaderboard(
       : Promise.resolve([]);
   const submittedPending = Promise.all(
     scopeSearches(config.scope, `is:pr created:${toGithubStamp(from)}..${toGithubStamp(to)}`).map(
-      (search) => countHumanPrs(token, search),
+      (search) => listSubmitted(token, search),
     ),
-  ).then((counts) => counts.reduce((a, b) => a + b, 0));
+  ).then((lists) => lists.flat());
   // Settle the side runs before anything can throw, so none of them is left
   // as an unhandled rejection when an earlier await fails.
   markersPending.catch(() => undefined);
@@ -956,8 +934,16 @@ export async function fetchLeaderboard(
     registryMaintainers(),
   ]);
   // A PR can only turn up once per search, and searches do not overlap, but a
-  // map keeps that an invariant rather than an assumption.
-  const prs = [...new Map(found.flatMap((f) => f.prs).map((pr) => [refOf(pr), pr])).values()];
+  // map keeps that an invariant rather than an assumption. Open and closed
+  // registry PRs stay out: their linked issues are not closed.
+  const prs = [
+    ...new Map(
+      [...found.flatMap((f) => f.prs), ...registryPrs.filter((pr) => pr.mergedAt)].map((pr) => [
+        refOf(pr),
+        pr,
+      ]),
+    ).values(),
+  ];
 
   const byLogin = new Map<string, Tally>();
   const coreByLogin = new Map<string, Tally>();
@@ -967,7 +953,7 @@ export async function fetchLeaderboard(
   // issues opened mid-event (Daniel files a fresh bug, someone fixes it same day).
   const closedInWindow = new Set<IssueRef>();
   const creditedIssues = new Set<IssueRef>();
-  const review: ReviewItem[] = [];
+  const verdicts = new Map<IssueRef, ClassifiedPr>();
 
   const issueFacts: IssueFactsMap = {};
 
@@ -980,14 +966,11 @@ export async function fetchLeaderboard(
       closedInWindow.add(ref);
       issueFacts[ref] = toIssueFacts(node);
     }
-    // Same verdict the admin scope check shows. Only the automatic path scores
-    // here; review-path PRs count once an organizer confirms them.
+    // Same verdict the admin scope check shows. A veto keeps the closed issues
+    // in the headline count (they are closed) but scores nothing.
     const verdict = classifyPr(pr, cutoff, coreSet, registry.byRepo);
-    if (verdict.path === "review") {
-      review.push(toReviewItem(pr, prRef, verdict, config.scoring, coreSet));
-      continue;
-    }
-    if (verdict.path !== "auto") continue;
+    verdicts.set(prRef, verdict);
+    if (verdict.path !== "auto" || vetoed.has(prRef)) continue;
     const qualifying = verdict.qualifying;
     for (const ref of qualifying) creditedIssues.add(ref);
     const credited = new Set(verdict.contributors.map((l) => l.toLowerCase()));
@@ -1017,7 +1000,7 @@ export async function fetchLeaderboard(
   // Organizer-marked closes: issues resolved without a PR that Daniel credits via
   // a comment ("nuxtathon closed @user"). Authorized authors only, and an issue a
   // scored PR already earned points for is skipped so the credit never doubles
-  // up. One closed by a PR that scored nothing (review path, bots) stays open to
+  // up. One closed by a PR that scored nothing (vetoed, bots) stays open to
   // a marker, since nobody got anything for it.
   //
   // The window runs to *now*, not to `endsAt`: marking happens by hand, and the
@@ -1079,11 +1062,21 @@ export async function fetchLeaderboard(
   // query that already selected its reactions, so this costs nothing extra.
   let upvotes = 0;
   for (const ref of closedInWindow) upvotes += issueFacts[ref]?.upvotes ?? 0;
-  const merged = prs.filter((pr) => isHuman(pr.author)).length;
-  // Every PR opened in the window across the scope, merged or not. The searches
-  // never overlap (scopeSearches drops repos inside listed orgs), so the counts
-  // add up without double counting.
-  const submitted = await submittedPending;
+  // Only PRs that earned a community contributor points. Core team, bot and
+  // self-maintained PRs are merged too, but counting them made the headline
+  // promise points the board never showed.
+  const merged = new Set([...byLogin.values()].flatMap((t) => [...t.prs])).size;
+  // Scope searches and registry scan never overlap (the scan skips the scope's
+  // orgs and repos); the map only guards that.
+  const registryRefs = new Set(registryPrs.map((pr) => refOf(pr)));
+  const listed = [
+    ...(await submittedPending),
+    ...registryPrs.filter((pr) => isHuman(pr.author)),
+  ].map((pr) => ({
+    ...toSubmittedItem(pr, verdicts, coreSet, config.scoring.prPoints.points),
+    registry: registryRefs.has(refOf(pr)),
+  }));
+  const submitted = [...new Map(listed.map((item) => [item.ref, item])).values()];
 
   const contributions: ContributionIds = {};
   for (const m of [byLogin, coreByLogin]) {
@@ -1098,11 +1091,75 @@ export async function fetchLeaderboard(
   return {
     entries,
     coreTeam,
-    stats: { submitted, merged, issuesClosed, upvotes },
+    stats: { submitted: submitted.length, merged, issuesClosed, upvotes },
     closedIssues: [...closedInWindow],
     creditedIssues: [...creditedIssues],
     contributions,
     issueFacts,
-    review: review.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    submitted: submitted.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
   };
+}
+
+function toSubmittedItem(
+  pr: {
+    number: number;
+    title?: string;
+    repository?: { nameWithOwner: string };
+    createdAt: string;
+    mergedAt: string | null;
+    state?: SubmittedPr["state"];
+    author: { login: string } | null;
+    labels?: { nodes: { name: string }[] };
+  },
+  verdicts: Map<IssueRef, ClassifiedPr>,
+  coreTeam: Set<string>,
+  prPoints: number,
+): Omit<SubmittedItem, "registry"> {
+  const ref = refOf(pr)!;
+  const author = pr.author?.login ?? "ghost";
+  const base = {
+    ref,
+    title: pr.title ?? "",
+    author,
+    labels: (pr.labels?.nodes ?? []).map((l) => l.name),
+    createdAt: pr.createdAt,
+    mergedAt: pr.mergedAt ?? "",
+    suggested: prPoints,
+  };
+  if (pr.mergedAt) {
+    const verdict = verdicts.get(ref);
+    // Merged between the board search and the list search.
+    if (!verdict) {
+      return {
+        ...base,
+        state: "merged",
+        path: null,
+        people: [author],
+        maintainers: [],
+        reason: "merged, not scored yet",
+      };
+    }
+    return {
+      ...base,
+      state: "merged",
+      path: verdict.path,
+      people:
+        verdict.path === "auto"
+          ? verdict.contributors.filter((l) => !coreTeam.has(l.toLowerCase()))
+          : [],
+      maintainers: verdict.maintainers,
+      reason: verdict.reason,
+    };
+  }
+  if (pr.state === "CLOSED") {
+    return {
+      ...base,
+      state: "closed",
+      path: null,
+      people: [],
+      maintainers: [],
+      reason: "closed without merging",
+    };
+  }
+  return { ...base, state: "open", path: null, people: [author], maintainers: [], reason: "open" };
 }

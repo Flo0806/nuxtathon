@@ -10,10 +10,12 @@ import { budgetAllows, budgetNotice } from "../utils/github-budget";
 import { announceRankingIfChanged } from "../utils/announce";
 import {
   activeReviews,
+  readRegistryPrs,
   readReviewDecisions,
   reviewCredits,
   scanRegistry,
-  writeReviewQueue,
+  vetoedRefs,
+  writeSubmitted,
 } from "../utils/review";
 
 // The scoring-relevant config as a short hash: any change to it busts the cache,
@@ -96,9 +98,13 @@ export default defineCachedEventHandler(
       console.warn(`[leaderboard] ${budgetNotice()}, serving the board from ${last.fetchedAt}`);
       return { ...last, held: true };
     }
+    const decisions = await readReviewDecisions();
     let result: Awaited<ReturnType<typeof fetchLeaderboard>>;
     try {
-      result = await fetchLeaderboard(config, token);
+      result = await fetchLeaderboard(config, token, undefined, {
+        registryPrs: await readRegistryPrs(),
+        vetoed: vetoedRefs(decisions),
+      });
     } catch (e) {
       if (!last) throw e;
       console.error("[leaderboard] recompute failed, serving the last board:", e);
@@ -111,7 +117,7 @@ export default defineCachedEventHandler(
     // into the headline count of everything closed.
     const closed = new Set(result.closedIssues);
     // Confirmed review decisions join as credits; see reviewCredits for why.
-    const reviews = activeReviews(await readReviewDecisions(), result.contributions);
+    const reviews = activeReviews(decisions, result.contributions);
     const entries = applyCredits(
       result.entries,
       [...state.credits, ...reviewCredits(reviews)],
@@ -140,8 +146,8 @@ export default defineCachedEventHandler(
       upvotes: await totalUpvotes(token, closed, result.issueFacts),
     };
 
-    // Same computation, so the queue always matches what the board scored.
-    await writeReviewQueue(result.review, fetchedAt);
+    // Same computation, so the list always matches what the board scored.
+    await writeSubmitted(result.submitted, fetchedAt);
     // Registry modules on their own hourly clock; never blocks the board, and
     // only while the budget has room for extras (scanRegistry checks).
     scanRegistry(token, config)

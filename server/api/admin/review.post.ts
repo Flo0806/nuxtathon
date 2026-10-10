@@ -1,18 +1,17 @@
 import type { IssueRef } from "#shared/types/issue-ref";
-import type { ReviewDecision } from "#shared/types/review";
+import type { SubmittedItem } from "#shared/types/review";
 import { parseIssueRef } from "#shared/utils/issue-ref";
 import {
-  readRegistryQueue,
   readReviewDecisions,
-  readReviewQueue,
+  readSubmitted,
   withReviewLock,
   writeReviewDecisions,
 } from "../../utils/review";
 
-// Confirm, reject, or undo ("open") queued PRs. `ref` for one, `refs` for a
-// batch ("reject all shown"), so a bulk action is one write and one cache clear
-// rather than fifty. Allowed until the event is fired; after that the result is
-// frozen and decisions are part of it.
+// Credit an open PR ("confirmed"), veto a merged one that scores ("rejected"),
+// or undo either ("open"). `ref` for one, `refs` for a batch, so a bulk action
+// is one write and one cache clear rather than fifty. Allowed until the event
+// is fired; after that the result is frozen and decisions are part of it.
 const MAX_BATCH = 500;
 
 export default defineEventHandler(async (event) => {
@@ -41,25 +40,29 @@ export default defineEventHandler(async (event) => {
 
   return withReviewLock(async () => {
     const decisions = await readReviewDecisions();
-    const queue = new Map(
-      [...(await readReviewQueue()).items, ...(await readRegistryQueue()).items].map((i) => [
-        i.ref,
-        i,
-      ]),
-    );
+    const list = new Map((await readSubmitted()).items.map((i) => [i.ref, i]));
     const decidedAt = new Date().toISOString();
     for (const ref of refs as IssueRef[]) {
       if (status === "open") {
         delete decisions[ref];
         continue;
       }
-      // A new decision needs the PR in the current queue; changing an existing
-      // one keeps the snapshot it was first decided on.
-      const item = decisions[ref] ?? queue.get(ref);
+      const item = list.get(ref);
       if (!item) {
-        throw createError({ statusCode: 404, statusMessage: `${ref} is not in the review queue` });
+        throw createError({
+          statusCode: 404,
+          statusMessage: `${ref} is not in the submitted list`,
+        });
       }
-      const { status: _s, points: _p, decidedAt: _d, ...snapshot } = item as ReviewDecision;
+      // Points only for work that cannot score on its own yet, a veto only for
+      // work that does; anything else would be a decision without effect.
+      if (status === "confirmed" && item.state !== "open") {
+        throw createError({ statusCode: 422, statusMessage: `${ref} is not open` });
+      }
+      if (status === "rejected" && !(item.state === "merged" && item.path === "auto")) {
+        throw createError({ statusCode: 422, statusMessage: `${ref} does not score` });
+      }
+      const { state: _s, path: _p, registry: _r, ...snapshot }: SubmittedItem = item;
       decisions[ref] = {
         ...snapshot,
         status,
