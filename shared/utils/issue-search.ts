@@ -13,7 +13,7 @@ function openIssuesQuery(config: Pick<EventConfig, "qualifyingBefore">, targets:
   // GitHub search takes a date, and `created:<` is exclusive, so the instant
   // maps to its calendar day in UTC.
   const day = Number.isFinite(cutoff.getTime()) ? cutoff.toISOString().slice(0, 10) : "";
-  const parts = [...targets, "is:issue", "state:open"];
+  const parts = [...targets, "is:issue", "state:open", "-linked:pr"];
   if (day) parts.push(`created:<${day}`);
   return parts.join(" ");
 }
